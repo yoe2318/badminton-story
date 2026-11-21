@@ -1,17 +1,17 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=110';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=110';
-import { attachGesture, chargeOf } from './gesture.js?v=110';
-import { loadVRM, Rig } from './character.js?v=110';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=110';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=120';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=120';
+import { attachGesture, chargeOf } from './gesture.js?v=120';
+import { loadVRM, Rig } from './character.js?v=120';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=120';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -196,8 +196,24 @@ function makeActor(side, human, shirt, shorts) {
 }
 const me = makeActor(1, true, 0xd8572a, 0x2a2a2a);
 const cpu = makeActor(-1, false, 0x2a6fd8, 0xf0f0f0);
+const mate = makeActor(1, false, 0x2aa36a, 0x2a2a2a); mate.isMate = true; // 雙打：你的電腦隊友
+const cpu2 = makeActor(-1, false, 0x8a4fd8, 0xf0f0f0);                       // 雙打：第二個電腦
 const actors = [me, cpu];
-const other = a => (a === me ? cpu : me);
+const dbl = () => settings.mode === 2 && !lesson;
+const mateOf = a => actors.find(b => b !== a && b.side === a.side) || null;
+const oppsOf = a => actors.filter(b => b.side !== a.side);
+const other = a => oppsOf(a)[0];
+// 單打／雙打切換：換球員名單、顯示或藏起隊友和第二個電腦
+function applyMode() {
+  actors.length = 0;
+  if (dbl()) actors.push(me, mate, cpu, cpu2); else actors.push(me, cpu);
+  for (const a of [mate, cpu2]) {
+    const on = actors.includes(a);
+    if (a.rig) a.rig.root.visible = on; else a.mesh.visible = on;
+    if (!on) { a.plan = null; a.fw = null; }
+  }
+  if (dbl()) loadDoublesRigs();
+}
 const auto = a => !a.human || settings.demo;
 const kindOf = y => (y >= 2.0 ? 'over' : y >= 1.0 ? 'side' : 'under');
 // 角色：自己＝models/player.vrm（私人手機版嵌在 model_data.js）；對手＝設定選的 CC0 角色（VRoid 官方 β 版範本，CC0），沒有檔案就跟自己同一個
@@ -208,6 +224,18 @@ async function putRig(a, url) {
   const rig = new Rig(vrm, makeRacket(), a.side > 0 ? -1 : 1);
   if (a.rig) scene.remove(a.rig.root);
   scene.add(rig.root); a.mesh.visible = false; a.rig = rig;
+}
+// 雙打的隊友和第二個電腦：用另外兩個 CC0 角色（第一次切到雙打才下載）
+let doublesLoading = false;
+async function loadDoublesRigs() {
+  if (doublesLoading) return; doublesLoading = true;
+  const o = settings.opp || 0;
+  for (const [a, k] of [[mate, (o + 1) % 4], [cpu2, (o + 2) % 4]]) {
+    if (a.rig) continue;
+    try { await putRig(a, OPP_MODELS[k]); } catch (e) { try { await putRig(a, playerURL); } catch (e2) {} }
+    if (a.rig) a.rig.root.visible = actors.includes(a);
+  }
+  doublesLoading = false;
 }
 async function loadOpponent() {
   try { await putRig(cpu, OPP_MODELS[settings.opp || 0]); }
@@ -239,6 +267,9 @@ innerRing.renderOrder = outerRing.renderOrder = 6;
 scene.add(innerRing, outerRing);
 
 let phase = 'serve', simT = 0, phaseT = 0, server = 0, pending = null, hitStop = 0, shake = 0;
+let serverActor = me, receiverActor = cpu; // 發球員、接發球員（單打＝兩人；雙打＝四人中的兩個）
+const rightCourt = { 1: me, '-1': cpu };   // 雙打：每隊誰站右區（自己面向網的右邊）
+const sideIdx = s => (s === me.side ? 0 : 1);
 const scores = [0, 0];
 
 // 球相對於球員：lat＞0＝在右邊（正手），fwd＞0＝在前方（靠網）
@@ -285,9 +316,24 @@ function standFor(a, c) {
 
 function setupServe() {
   phase = 'serve';
-  const s = actors[server], r = other(s), even = scores[server] % 2 === 0;
-  s.pos = { x: (even ? 1 : -1) * s.side * 1.0, z: s.side * 2.5 };
-  r.pos = { x: (even ? 1 : -1) * r.side * 1.0, z: r.side * 3.0 };
+  if (!dbl()) {
+    serverActor = actors[server]; receiverActor = other(serverActor);
+    const s = serverActor, r = receiverActor, even = scores[server] % 2 === 0;
+    s.pos = { x: (even ? 1 : -1) * s.side * 1.0, z: s.side * 2.5 };
+    r.pos = { x: (even ? 1 : -1) * r.side * 1.0, z: r.side * 3.0 };
+  } else {
+    // 發球員一定站在跟分數單雙對應的區：雙數＝右區
+    const s = serverActor, ss = s.side, even = scores[sideIdx(ss)] % 2 === 0;
+    rightCourt[ss] = even ? s : mateOf(s);
+    const rs = -ss, r = even ? rightCourt[rs] : mateOf(rightCourt[rs]);
+    receiverActor = r;
+    const cx = a => (rightCourt[a.side] === a ? 1 : -1) * a.side; // 右區的 x 方向
+    s.pos = { x: cx(s) * 0.9, z: ss * 2.3 };             // 發球員：靠前發球線
+    mateOf(s).pos = { x: cx(mateOf(s)) * 0.6, z: ss * 4.0 }; // 發球員的隊友：站後面
+    r.pos = { x: cx(r) * 0.9, z: rs * 2.5 };             // 接發球員：對角、靠前
+    mateOf(r).pos = { x: cx(mateOf(r)) * 1.0, z: rs * 3.8 };
+  }
+  const s = serverActor;
   for (const a of actors) { a.base = { ...a.pos }; a.plan = null; a.letGo = false; a.vel = { x: 0, z: 0 }; a.stand = null; a.fw = null; }
   s.serveType = s.human && !settings.demo ? 'sserve' : Math.random() < 0.55 ? 'sserve' : 'lserve';
   Object.assign(shuttle, { held: true, lastHitter: null, tumble: false, netFault: false, serve: false, bounces: 0, restT: 0, spin: 0 });
@@ -300,28 +346,84 @@ function setupServe() {
 }
 
 function holdShuttle() {
-  const s = actors[server];
+  const s = serverActor;
   shuttle.p = { x: s.pos.x + 0.3 * s.side, y: 1.0, z: s.pos.z - 0.25 * s.side };
   shuttle.v = { x: 0, y: 0, z: 0 };
 }
 
+// ---------- 雙打 ----------
+// 誰接：發球一定是接發球員；其他球兩人都算一次，看誰「到得了、離得近」，差不多時讓玩家打（你是來打球的）
+function pickReceiver(hitter, pts, serve) {
+  const team = oppsOf(hitter);
+  if (team.length === 1) return team[0];
+  if (serve) return receiverActor;
+  let best = null, bestC = Infinity;
+  for (const b of team) {
+    const pl = predictContact(pts, b.side, simT, b.pos, auto(b) ? dOf(b).react : HUMAN.react);
+    const st = standFor(b, pl), d = Math.hypot(st.x - b.pos.x, st.z - b.pos.z);
+    const c = d - Math.max(0, pl.t - simT) * 3.2 - (b === me && !settings.demo ? 0.35 : 0);
+    if (c < bestC) { bestC = c; best = b; }
+  }
+  return best;
+}
+// 站位：自己隊打進攻球（殺、吊、放網、平抽、推）→ 前後站；打高球（高遠、挑）→ 左右站。接球的人去接，另一個補位
+const ATTACK_SHOTS = new Set(['smash', 'jumpsmash', 'slicesmash', 'stick', 'kill', 'fastdrop', 'slowdrop', 'slicedrop', 'drive', 'push', 'net', 'spin', 'cross', 'block', 'sserve', 'fserve']);
+function doublesPositions(hitter, key, receiver) {
+  const s = hitter.side, m = mateOf(hitter);
+  if (m) {
+    if (ATTACK_SHOTS.has(key)) { // 前後站：打的人在後場就留後面，隊友上網；打的人在前面就封網，隊友補後場
+      const back = Math.abs(hitter.pos.z) >= 2.8;
+      hitter.base = { x: clamp(hitter.pos.x * 0.4, -1.2, 1.2), z: s * (back ? 4.2 : 1.9) };
+      m.base = { x: clamp(-hitter.pos.x * 0.3, -1, 1), z: s * (back ? 1.9 : 4.2) };
+    } else { // 左右站：各守一半
+      const hs = Math.sign(hitter.pos.x || 1);
+      hitter.base = { x: hs * 1.3, z: s * 3.4 }; m.base = { x: -hs * 1.3, z: s * 3.4 };
+    }
+    if (!m.plan) { m.letGo = false; m.fw = planRecover(m, m.base, simT + 0.1, false); if (m.fw) m.fw.recover = false; }
+    if (!(lesson && hitter === cpu)) hitter.fw = planRecover(hitter, hitter.base, simT + (key === 'jumpsmash' ? 0.4 : 0.1), hitter.lunge);
+  }
+  // 接球方：沒接的那個人補位（接的人在後場 → 補前面；在前面 → 補後場；中場 → 補另一邊）
+  const rm = mateOf(receiver);
+  if (rm && receiver.plan) {
+    const pz = Math.abs(receiver.plan.z), rs = receiver.side;
+    rm.base = pz > 3.6 ? { x: clamp(-receiver.plan.x * 0.3, -1, 1), z: rs * 2.0 }
+      : pz < 2.2 ? { x: 0, z: rs * 4.2 } : { x: -Math.sign(receiver.plan.x || 1) * 1.3, z: rs * 3.3 };
+    rm.plan = null; rm.letGo = true;
+    rm.fw = planRecover(rm, rm.base, simT + (auto(rm) ? dOf(rm).react : HUMAN.react), false); if (rm.fw) rm.fw.recover = false;
+  }
+}
+// 電腦看對手：單打＝那一個人；雙打＝兩人位置綜合（平均位置、誰在前誰在後）
+function oppView(a) {
+  const os = oppsOf(a);
+  if (os.length === 1) return os[0];
+  const [p, q] = os;
+  return { pos: { x: (p.pos.x + q.pos.x) / 2, z: (p.pos.z + q.pos.z) / 2 }, vel: { x: Math.max(Math.abs(p.vel.x), Math.abs(q.vel.x)), z: Math.max(Math.abs(p.vel.z), Math.abs(q.vel.z)) }, recoverUntil: Math.max(p.recoverUntil || 0, q.recoverUntil || 0), side: p.side };
+}
+const halfW = () => (dbl() ? 3.05 : COURT.halfW);          // 雙打邊線比較寬
+const serveLong = () => (dbl() ? COURT.halfL - 0.76 : COURT.halfL); // 雙打發球不能超過雙打後發球線
+
 // 界內：單打邊線、底線；發球還要過前發球線、落在對角的發球區（serveX＝發球的人站的 x；中線壓線算界內）
 function inBounds(x, z, side, serve, serveX) {
-  if (!(Math.abs(x) <= COURT.halfW && Math.abs(z) <= COURT.halfL && z * side > 0)) return false;
+  if (!(Math.abs(x) <= halfW() && Math.abs(z) <= COURT.halfL && z * side > 0)) return false;
   if (!serve) return true;
-  return Math.abs(z) >= COURT.shortLine && (serveX === undefined || x * Math.sign(serveX || 1) <= 0.02);
+  return Math.abs(z) >= COURT.shortLine && Math.abs(z) <= serveLong() && (serveX === undefined || x * Math.sign(serveX || 1) <= 0.02);
 }
 
 function hit(a, key, o) {
-  const spec = SHOTS[key], opp = other(a);
+  const spec = SHOTS[key];
+  let opp = other(a);
   let depth = spec.depth[0] + (spec.depth[1] - spec.depth[0]) * (o.depthFrac ?? 0.5);
   let tx = o.tx ?? clamp(o.aimX ?? 0, -1, 1) * 2.2;
+  if (key === 'kill' && a === me && !settings.demo && o.tx === undefined) { // 玩家撲球：直直滑＝從擊球點直直往前壓（不是往球場中間斜飛）；稍微歪一點不算斜滑
+    const ax = Math.abs(o.aimX || 0) < 0.3 ? 0 : (o.aimX - Math.sign(o.aimX) * 0.3) / 0.7;
+    tx = clamp(shuttle.p.x + ax * 1.6, -halfW() + 0.3, halfW() - 0.3);
+  }
   if (spec.cross) tx = (Math.sign(o.aimX || 1)) * 2.0;
   if (spec.slice) tx += clamp(o.curve ?? 0, -0.5, 0.5) * 2;
   if (o.noPull) depth -= 1.8; // 沒拉拍：打不深
   if (o.backhand && !spec.serve) depth -= key === 'clear' ? 1.2 : 0.3; // 反手頭頂高遠不容易打深（反手下手挑球照樣挑得到底）
   const err = ({ perfect: 0.08, good: 0.4, poor: 1.0 }[o.quality || 'good'] + (o.backhand ? 0.15 : 0)) * (o.errK ?? 1) * (1 + 0.8 * tiredOf(a));
-  if (o.safe) { const m = err * o.safe; tx = clamp(tx, -COURT.halfW + m, COURT.halfW - m); if (!spec.serve) depth = Math.min(depth, COURT.halfL - m); else depth = Math.max(depth, COURT.shortLine + m); } // 電腦發短球：瞄前發球線後面一點 // 電腦：瞄準線內留邊界
+  if (o.safe) { const m = err * o.safe; tx = clamp(tx, -halfW() + m, halfW() - m); if (!spec.serve) depth = Math.min(depth, COURT.halfL - m); else depth = clamp(depth, COURT.shortLine + m, serveLong() - m); } // 電腦發短球：瞄前發球線後面一點 // 電腦：瞄準線內留邊界
   const ang = Math.random() * Math.PI * 2, rr = err * Math.sqrt(Math.random());
   tx += Math.cos(ang) * rr; depth = Math.max(0.15, depth + Math.sin(ang) * rr);
   const tired = tiredOf(a);
@@ -373,6 +475,8 @@ function hit(a, key, o) {
   // 打完回位：跨步的話先蹬回來；跳殺要等落地
   if (o.fancy === 'dive') { a.lunge = true; a.fw = null; a.recoverUntil = simT + 0.9; a.pendingRecover = simT + 0.9; } // 魚躍：趴 0.9 秒才起來
   else if (!(lesson && a === cpu)) a.fw = planRecover(a, a.base, simT + (o.fancy ? 0.5 : spec.jump ? 0.4 : a.lunge ? 0.14 : 0.06), a.lunge);
+  if (dbl()) opp = pickReceiver(a, res.sim.pts, spec.serve);
+  { const m = mateOf(a); if (m) { m.plan = null; } } // 自己隊友不用再打
   opp.plan = predictContact(res.sim.pts, opp.side, simT, opp.pos, auto(opp) ? dOf(opp).react : HUMAN.react);
   opp.letGo = false;
   opp.stand = standFor(opp, opp.plan); opp.splitT = simT;
@@ -387,6 +491,7 @@ function hit(a, key, o) {
     if (!opp.letGo) { opp.swingT = opp.plan.t; opp.low = opp.plan.kind !== 'high'; opp.jumpT = opp.plan.t; opp.jumpRise = 0.275; opp.swingKind = strokeOf({ pos: opp.stand, side: opp.side }, opp.plan); aiPreChoose(opp); opp.contactP = { x: opp.plan.x, z: opp.plan.z }; opp.lungeAt = relOf({ pos: opp.stand, side: opp.side }, opp.plan); opp.lunge = opp.plan.y < 2.2 && Math.hypot(opp.plan.x - opp.stand.x, opp.plan.z - opp.stand.z) > 0.8; }
   }
   if (opp.plan && !opp.letGo) planFootwork(opp);
+  if (dbl()) doublesPositions(a, key, opp);
   phase = 'rally';
   const kmh = Math.round(Math.hypot(res.v.x, res.v.y, res.v.z) * 3.6);
   const feel = feelOf(key);
@@ -434,7 +539,7 @@ const PERS = [null,
   { name: '網前型', desc: '愛放網、搓球、吊網前' },
   { name: '花招型', desc: '假動作、勾對角、劈殺劈吊' },
 ];
-function pickPers() { cpu.pers = settings.pers > 0 ? settings.pers : 1 + Math.floor(Math.random() * 5); }
+function pickPers() { cpu.pers = settings.pers > 0 ? settings.pers : 1 + Math.floor(Math.random() * 5); cpu2.pers = 1 + Math.floor(Math.random() * 5); mate.pers = 1; } // 雙打：第二個電腦隨機、隊友全能型
 function persLabel() { const P = PERS[cpu.pers]; return P ? `對手：${P.name}（${P.desc}）` : ''; }
 function personalize(a, t) {
   const p = a.pers || 1, y = shuttle.p.y, myD = Math.abs(a.pos.z), r = Math.random(), k = t.key;
@@ -462,7 +567,7 @@ function personalize(a, t) {
 
 // 戰術：看對手站哪裡，打空檔；對手在前就打後、在後就打前；有機會就殺
 function aiTactic(a, D) {
-  const o = other(a), y = shuttle.p.y, r = Math.random();
+  const o = oppView(a), y = shuttle.p.y, r = Math.random();
   const myD = Math.abs(a.pos.z), oD = Math.abs(o.pos.z); // 離網距離
   const open = -Math.sign(o.pos.x || rand(-1, 1)); // 對手不在的那一邊
   const offX = Math.abs(o.pos.x) > 0.7; // 對手被拉開了
@@ -521,13 +626,13 @@ const SHORT_KEYS = new Set(['fastdrop', 'slowdrop', 'slicedrop', 'block', 'net',
 
 function aiTryHit(a) {
   a.plan = null;
-  if (a.letGo || shuttle.lastHitter === a) return;
+  if (a.letGo || shuttle.lastHitter === a || (shuttle.lastHitter && shuttle.lastHitter.side === a.side)) return;
   const rc = reachOf(a, shuttle.p);
   if (!rc.ok) return; // 跑不到
   const D = dOf(a), r = Math.random();
   let quality = r < D.perfect ? 'perfect' : r < 1 - D.poor ? 'good' : 'poor';
   if (rc.d / rc.R > 0.8 && quality === 'perfect') quality = 'good';
-  const opp = other(a);
+  const opp = oppView(a);
   let aimX = D.tactic > 0 ? -Math.sign(opp.pos.x || rand(-1, 1)) * rand(0.45, 1) : rand(-0.8, 0.8);
   if (Math.random() < D.backhand) aimX = -opp.side * rand(0.7, 1); // 打對手的反手邊
   const stroke = strokeOf(a, shuttle.p);
@@ -548,7 +653,7 @@ function aiTryHit(a) {
 function humanSwing(g) {
   if (simT < me.coolUntil) return;
   me.coolUntil = simT + 0.3;
-  if (phase === 'serve' && server === 0 && !settings.demo) {
+  if (phase === 'serve' && serverActor === me && !settings.demo) {
     // 發球：往下滑＝短球（滑越長越深、斜滑選內外角）；點一下＝最短的貼線小球；往上滑＝高遠（快速一甩＝平快球）
     const sx = -Math.sign(me.pos.x || 1), short = g.dir === 'down' || g.type === 'tap';
     const key = short ? 'sserve' : (g.speedN || 0) > 3.2 ? 'fserve' : 'lserve';
@@ -591,7 +696,7 @@ function humanSwing(g) {
 // 球在打得到的範圍內就能打；擊球那一刻球的高度決定是哪一類球
 const REACH = 1.0, TOP = 3.4; // 3.4 m＝170 cm 選手跳起來打得到的高度
 function reachInfo() {
-  if (phase !== 'rally' || shuttle.lastHitter === me || shuttle.held || shuttle.p.z <= 0.02 || shuttle.netFault) return null;
+  if (phase !== 'rally' || shuttle.lastHitter === me || (shuttle.lastHitter && shuttle.lastHitter.side === me.side) || shuttle.held || shuttle.p.z <= 0.02 || shuttle.netFault) return null;
   const y = shuttle.p.y, rc = reachOf(me, shuttle.p);
   return { dh: rc.d, R: rc.R, y, ok: rc.ok, lat: rc.lat, fwd: rc.fwd, zone: y >= TOP_Y ? 'top' : y >= 2.2 ? 'high' : y >= 1.0 ? 'mid' : 'low' };
 }
@@ -636,8 +741,9 @@ function resolveLanding() {
   if (s.netFault) { winner = other(h); reason = '掛網'; }
   else if (landSide === h.side) { winner = other(h); reason = '沒過網'; }
   else if (inBounds(s.p.x, s.p.z, landSide, s.serve, s.serveX)) { winner = h; reason = '落地得分'; }
-  else if (s.serve && Math.abs(s.p.z) < COURT.shortLine && Math.abs(s.p.x) <= COURT.halfW) { winner = other(h); reason = '發球沒過前發球線'; }
-  else if (s.serve && Math.abs(s.p.x) <= COURT.halfW && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球發錯區（要發到對角）'; }
+  else if (s.serve && Math.abs(s.p.z) < COURT.shortLine && Math.abs(s.p.x) <= halfW()) { winner = other(h); reason = '發球沒過前發球線'; }
+  else if (s.serve && Math.abs(s.p.x) <= halfW() && Math.abs(s.p.z) > serveLong() && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球太長（超過雙打後發球線）'; }
+  else if (s.serve && Math.abs(s.p.x) <= halfW() && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球發錯區（要發到對角）'; }
   else { winner = other(h); reason = '出界'; }
   point(winner, reason);
 }
@@ -678,7 +784,7 @@ function fancyFX(name, pts, fast) {
 }
 
 function point(w, reason) {
-  const i = w === me ? 0 : 1;
+  const i = w.side === me.side ? 0 : 1;
   if (!lesson) {
     if (w === me && reason === '落地得分') {
       const x = Math.abs(shuttle.p.x), z = Math.abs(shuttle.p.z);
@@ -687,22 +793,28 @@ function point(w, reason) {
     }
     if (w !== me) { style.combo = 0; updateStyle(); }
   }
-  scores[i]++; server = i;
+  scores[i]++;
+  if (dbl()) { // 雙打發球輪轉
+    if (serverActor.side === w.side) rightCourt[w.side] = rightCourt[w.side] === serverActor ? mateOf(serverActor) : serverActor; // 發球方得分：發球員換區、繼續發
+    else serverActor = scores[i] % 2 === 0 ? rightCourt[w.side] : mateOf(rightCourt[w.side]);                                 // 換對方發：站在對的區的人發
+  } else serverActor = w;
+  server = i;
   if (!lesson) staminaPoint();
   for (const a of actors) { a.plan = null; a.letGo = false; }
   pending = null;
   updateScore();
   const T = settings.target, cap = T === 21 ? 30 : T + 9;
   const gameWon = (scores[i] >= T && scores[i] - scores[1 - i] >= 2) || scores[i] >= cap;
-  $('#banner').textContent = `${w === me ? '你得分' : '電腦得分'}・${reason}`;
-  $('#banner').style.color = w === me ? '#ffd84d' : '#9fd0ff';
+  $('#banner').textContent = `${i === 0 ? (dbl() ? '你們得分' : '你得分') : '電腦得分'}・${reason}`;
+  $('#banner').style.color = i === 0 ? '#ffd84d' : '#9fd0ff';
   const need = settings.games === 3 ? 2 : 1;
   if (gameWon) { games[i]++; gameLog.push(`${scores[0]}:${scores[1]}`); }
   const won = gameWon && games[i] >= need;
   if (gameWon && !won) { // 這局結束、比賽還沒結束：換場、勝方下一局先發
     const n = games[0] + games[1];
-    $('#banner').textContent = `第 ${n} 局 ${w === me ? '你贏' : '電腦贏'}　${scores[0]}:${scores[1]}　（局數 ${games[0]}:${games[1]}）・換場`;
-    scores[0] = scores[1] = 0; server = i; midSwitched = false; for (const a of actors) a.stam = clamp((a.stam ?? 100) + 40, 0, 100); // 局間休息
+    $('#banner').textContent = `第 ${n} 局 ${i === 0 ? '你贏' : '電腦贏'}　${scores[0]}:${scores[1]}　（局數 ${games[0]}:${games[1]}）・換場`;
+    scores[0] = scores[1] = 0; server = i; midSwitched = false;
+    if (dbl()) serverActor = rightCourt[w.side]; // 新的一局：勝方右區的人先發 for (const a of actors) a.stam = clamp((a.stam ?? 100) + 40, 0, 100); // 局間休息
     phase = 'point'; phaseT = simT + 3.2; updateScore(); setHint();
     return;
   }
@@ -714,7 +826,7 @@ function point(w, reason) {
   if (won) {
     phase = 'over';
     setTimeout(() => {
-      $('#overtext').textContent = w === me ? '你贏了！' : '電腦贏了';
+      $('#overtext').textContent = i === 0 ? (dbl() ? '你們贏了！' : '你贏了！') : '電腦贏了';
       $('#overscore').innerHTML = `${need > 1 ? `局數 ${games[0]} : ${games[1]}<br><small>${gameLog.join('・')}</small>` : `${scores[0]} : ${scores[1]}`}<br>風格分 ${style.total.toLocaleString()}・最高連擊 ${style.best}`;
       $('#over').classList.remove('hidden');
     }, 900);
@@ -865,7 +977,7 @@ function updateAnim(a) {
   an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : 0.6) - an.tPlan) / 0.35, 0, 1) : 0; // 撲球：早一點把拍子舉起來
   an.relax = (an.relax || 0) + ((a.fw && a.fw.recover && !a.plan ? 1 : 0) - (an.relax || 0)) * 0.08; // 回位時放鬆（慢慢變）
   an.jumpProg = jumpOf(a).prog;
-  an.stance = phase === 'serve' ? (a === actors[server] ? (a.serveType === 'lserve' ? 'F' : 'B') : 'R') : null;
+  an.stance = phase === 'serve' ? (a === serverActor ? (a.serveType === 'lserve' ? 'F' : 'B') : 'R') : null;
   // 全身轉向
   let yaw = 0;
   const swinging = Math.abs(simT - a.swingT) < 0.6;
@@ -882,8 +994,8 @@ function updateAnim(a) {
   else if (an.gait === 'back') yaw = -0.6; // 退後場：側身
   an.bodyYaw = yaw;
   // 對手要擊球了嗎？（快打的瞬間才把拍子抬起來）
-  const o = other(a);
-  const oT = o.plan && !o.letGo && shuttle.lastHitter === a ? o.plan.t - simT : 9;
+  const o = oppsOf(a).find(b => b.plan && !b.letGo) || other(a);
+  const oT = o.plan && !o.letGo && shuttle.lastHitter && shuttle.lastHitter.side === a.side ? o.plan.t - simT : 9;
   an.alert = phase === 'rally' && oT < 0.45 && oT > -0.15 ? clamp(1 - (oT - 0.1) / 0.35, 0, 1) : 0;
   an.mode = o.plan && o.plan.y >= 2.2 && Math.abs(o.plan.z) < 5.4 ? 'def' : Math.abs(a.pos.z) < 2.6 ? 'net' : 'base';
   // 移動時提早準備：要退後場打頭頂就先引拍；要上網打低球就先把拍子伸出去
@@ -896,8 +1008,8 @@ function fixed() {
   if (phase === 'lessonwait') { floorTick(); return; }
   if (phase === 'serve') {
     holdShuttle();
-    if (auto(actors[server]) && simT >= phaseT) {
-      const s = actors[server];
+    if (auto(serverActor) && simT >= phaseT) {
+      const s = serverActor;
       if (s.human) hit(s, s.serveType || 'sserve', { tx: -Math.sign(s.pos.x) * rand(0.5, 2), depthFrac: Math.random(), quality: 'good' });
       else aiServe(s);
     }
@@ -943,6 +1055,7 @@ function floorTick() {
 // ---------------- 介面 ----------------
 function updateScore() {
   $('#s0').textContent = scores[0]; $('#s1').textContent = scores[1];
+  { const w = document.querySelectorAll('#score .who'); if (w.length >= 2) { w[0].textContent = dbl() ? '你們' : '你'; w[1].textContent = dbl() ? '電腦隊' : '電腦'; } }
   $('#d0').classList.toggle('on', server === 0); $('#d1').classList.toggle('on', server === 1);
   $('#target').textContent = `${settings.target} 分制${settings.games === 3 ? `・局數 ${games[0]}:${games[1]}` : ''}${settings.demo ? '・自動示範' : ''}`;
   staminaUI();
@@ -958,7 +1071,7 @@ function setHint() {
   if (lesson) { $('#hint').textContent = LESSONS[lesson.i].hint; return; }
   let t = '';
   if (settings.demo) t = '自動示範中（設定裡可以關掉）';
-  else if (phase === 'serve' && server === 0) t = '發球：往下滑＝短球（越長越深、斜滑換角度）｜往上滑＝高遠（快甩＝平快）';
+  else if (phase === 'serve' && serverActor === me) t = '發球：往下滑＝短球（越長越深、斜滑換角度）｜往上滑＝高遠（快甩＝平快）';
   else if (phase === 'rally' && me.plan) t = '球進到打得到的範圍時，球旁邊的圈會亮起來';
   $('#hint').textContent = t;
 }
@@ -1071,10 +1184,10 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   settings[k] = v; saveSettings(); syncSettingsUI(); updateScore(); setHint();
   if (k === 'pers') { pickPers(); $('#ailabel').textContent = persLabel(); }
   if (k === 'opp') loadOpponent();
-  if (changedTarget || k === 'games') restart();
+  if (changedTarget || k === 'games' || k === 'mode') restart();
   if (k === 'stamina') { for (const a of actors) a.stam = 100; staminaUI(); }
 }));
-function restart() { games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
+function restart() { serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
 $('#gear').onclick = () => { syncSettingsUI(); $('#settings').classList.remove('hidden'); };
 $('#close').onclick = () => $('#settings').classList.add('hidden');
 $('#restart').onclick = () => { restart(); $('#settings').classList.add('hidden'); };
@@ -1174,7 +1287,7 @@ function startLesson(i) {
     settings.target = 11; saveSettings(); syncSettingsUI(); // 難度照設定，不再強制改成簡單
     doneSet.add(i); saveDone(); restart(); return;
   }
-  lesson = { i, count: 0 };
+  lesson = { i, count: 0 }; applyMode(); // 教學只有單打
   $('#score').style.display = 'none'; $('#lessonbar').style.display = 'flex';
   $('#banner').textContent = ''; $('#ailabel').textContent = ''; $('#lessonmsg').textContent = '';
   lessonBar(); setHint();
@@ -1185,6 +1298,7 @@ function endLesson() {
   lesson = null;
   if (phase === 'feed' || phase === 'lessonwait') { phase = 'point'; phaseT = simT + 0.3; }
   $('#score').style.display = ''; $('#lessonbar').style.display = 'none'; $('#lessonmsg').textContent = '';
+  applyMode(); // 回到設定的單打／雙打
 }
 function doFeed() {
   if (!lesson) { setupServe(); return; }
@@ -1375,6 +1489,7 @@ function loop(now) {
 
 syncSettingsUI();
 pickPers();
+applyMode();
 setupServe();
 requestAnimationFrame(loop);
 window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來的球（玩家照正常流程判斷）
@@ -1383,7 +1498,7 @@ window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來�
   me.letGo = false; me.stand = standFor(me, me.plan); me.splitT = simT; me.reactAt = simT + HUMAN.react; planFootwork(me);
 };
 window.__testHit = (key, o, at) => { if (at) { Object.assign(shuttle.p, at); cpu.pos.x = at.x; cpu.pos.z = at.z - 0.4; } shuttle.held = false; hit(cpu, key, o || {}); }; // 測試用：讓電腦打指定的球
-window.__game = { settings, scores, games, me, cpu, shuttle, get phase() { return phase; }, get simT() { return simT; } };
+window.__game = { settings, scores, games, me, cpu, mate, cpu2, actors, shuttle, get serverActor() { return serverActor; }, get receiverActor() { return receiverActor; }, get phase() { return phase; }, get simT() { return simT; } };
 
 // 測試用：把動作錄成連續格（一張圖排成格子），方便和真人影片逐格比對
 // o = { frames: 12, step: 0.1, cols: 6, cellW: 200, cam: { pos: [x,y,z], at: [x,y,z] } }
