@@ -143,11 +143,11 @@
     </ul>
     <h3>方向與假動作</h3>
     <ul>
-      <li>往左上／右上（或左下／右下）滑＝打到左邊／右邊</li>
+      <li>滑的方向＝球飛的方向：直直滑＝從擊球點直直打過去；往左上／右上（或左下／右下）滑＝往左／右斜，斜越多越偏。點一下（平抽）是點螢幕左半邊打左邊、右半邊打右邊</li>
       <li>手指按下去<b>先停一下</b>再滑＝停頓假動作，電腦會慢一拍</li>
     </ul>
     <h3>發球</h3>
-    <ul><li>往下滑＝發短球：滑越長球越深，斜著滑選內角或外角；點一下＝最短的貼線小球</li><li>往上滑＝發高遠球；快速一甩＝平快球（壓低、快速打到後場）</li></ul>
+    <ul><li>往下滑＝發短球：滑越長球越深，斜著滑選內角或外角；點一下＝最短的貼線小球</li><li>往上滑＝發高遠球；快速一甩＝平快球（壓低、快速打到後場）。發球一定要發到對角的發球區，往左／右斜滑是在那一區裡調左右</li></ul>
     <h3>花式（自動出現）</h3>
     <ul>
       <li>球跑到你<b>身後左側</b>還在腰的高度時打＝<b>背後接球</b></li>
@@ -161,7 +161,7 @@
 
   <div id="settings" class="overlay hidden">
     <h2>設定</h2>
-    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.4.0</p>
+    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.4.1</p>
     <div class="row"><span>模式</span><div class="seg" data-k="mode"><button data-v="1">單打</button><button data-v="2">雙打（你＋電腦隊友）</button></div></div>
     <div class="row"><span>分數</span><div class="seg" data-k="target"><button data-v="11">11</button><button data-v="15">15</button><button data-v="21">21</button></div></div>
     <div class="row"><span>局數</span><div class="seg" data-k="games"><button data-v="1">一局</button><button data-v="3">三局兩勝</button></div></div>
@@ -202,7 +202,7 @@
     <button class="btn" id="again">再來一局</button>
   </div>
 </div>
-<script type="module" src="src/main.js?v=140"></script>
+<script type="module" src="src/main.js?v=141"></script>
 <script>
 (() => {
   const btn = document.getElementById('install'), help = document.getElementById('installHelp');

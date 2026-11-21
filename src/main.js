@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=140';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=140';
-import { attachGesture, chargeOf } from './gesture.js?v=140';
-import { loadVRM, Rig } from './character.js?v=140';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=140';
-import { buildArena } from './arena.js?v=140';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=141';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=141';
+import { attachGesture, chargeOf } from './gesture.js?v=141';
+import { loadVRM, Rig } from './character.js?v=141';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=141';
+import { buildArena } from './arena.js?v=141';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -429,6 +429,11 @@ function hit(a, key, o) {
     const ax = Math.abs(o.aimX || 0) < 0.3 ? 0 : (o.aimX - Math.sign(o.aimX) * 0.3) / 0.7;
     tx = clamp(shuttle.p.x + ax * 1.6, -halfW() + 0.3, halfW() - 0.3);
   }
+  else if (a === me && !settings.demo && o.tx === undefined && !o.tap && !spec.serve) { // 玩家：滑的方向＝球飛的方向（以擊球點為準，直直滑＝直直打，不是打向對面中間）
+    const ax = Math.abs(o.aimX || 0) < 0.15 ? 0 : (o.aimX - Math.sign(o.aimX) * 0.15) / 0.85; // 稍微歪一點不算斜滑
+    const travel = Math.abs(-a.side * depth - shuttle.p.z);                                  // 球要飛的前後距離：越遠，同樣的角度橫移越多
+    tx = clamp(shuttle.p.x + ax * travel * 0.32, -halfW() + 0.3, halfW() - 0.3);
+  }
   if (spec.cross) tx = (Math.sign(o.aimX || 1)) * 2.0;
   if (spec.slice) tx += clamp(o.curve ?? 0, -0.5, 0.5) * 2;
   if (o.noPull) depth -= 1.8; // 沒拉拍：打不深
@@ -670,7 +675,7 @@ function humanSwing(g) {
     // 發球：往下滑＝短球（滑越長越深、斜滑選內外角）；點一下＝最短的貼線小球；往上滑＝高遠（快速一甩＝平快球）
     const sx = -Math.sign(me.pos.x || 1), short = g.dir === 'down' || g.type === 'tap';
     const key = short ? 'sserve' : (g.speedN || 0) > 3.2 ? 'fserve' : 'lserve';
-    const tx = sx * clamp(1.3 + g.aimX * -sx * 1.1, 0.25, 2.35);
+    const tx = sx * clamp(1.3 + g.aimX * sx * 1.1, 0.25, 2.35); // 往右滑＝落點往右（發球一定要發到對角的發球區，所以只能在那一區裡左右調）
     const depthFrac = g.type === 'tap' ? 0 : short ? clamp(((g.lenN || 0) - 0.06) / 0.3, 0, 1) : g.depthFrac;
     hit(me, key, { tx, depthFrac, quality: 'good' });
     return;
@@ -741,7 +746,7 @@ function humanTryHit(sw) {
   if (jumped) key = r.y >= 1.5 ? 'jumpsmash' : 'drive'; // 起跳＝殺：球夠高就跳殺，太低就平快抽過去（絕不變挑球）
   if (!fancy && sw.k0 === 'kill' && r.y >= 1.3 && sw.g.dir === 'up') key = 'kill'; // 滑的那一刻球比網高＝撲球（不因為晚 0.05 秒變挑球）
   if (fancy) key = sw.g.dir === 'down' || sw.g.type === 'tap' ? (r.y < 1.0 ? 'net' : 'block') : 'lift'; // 花式只能救回去：放小球或挑高
-  hit(me, key, { aimX: sw.g.aimX, depthFrac: sw.g.depthFrac, power: sw.g.power, quality, hold: sw.g.hold,
+  hit(me, key, { aimX: sw.g.aimX, tap: sw.g.type === 'tap', depthFrac: sw.g.depthFrac, power: sw.g.power, quality, hold: sw.g.hold,
                  curve: sw.g.curve, y: r.y, backhand: stroke[0] === 'b', rth: stroke === 'rth', fancy });
 }
 
@@ -1358,7 +1363,7 @@ const LESSONS = [
     intro: '對方殺球或平球過來、球在腰部（黃色圈）時，<b>點一下</b>＝平抽，用平快的球直接打回去。點螢幕<b>左半邊</b>打左邊、<b>右半邊</b>打右邊。',
     hint: '腰部快球：點一下＝平抽' },
   { t: '打右邊', feed: 'lift', need: 3, slow: false, ok: (k, o, land) => land.x > 0.6,
-    intro: '滑的方向決定落點。<b>往右上滑</b>，球就會飛到對方場地的右邊（你看過去的右邊）。用任何球路都可以。',
+    intro: '滑的方向＝球飛的方向：<b>直直滑</b>＝從你打到球的地方直直飛過去；<b>往右上滑</b>＝往右斜，斜越多越往右（你看過去的右邊）。用任何球路都可以。',
     hint: '往右上方滑，把球打到右邊' },
   { t: '打左邊', feed: 'lift', need: 3, slow: false, ok: (k, o, land) => land.x < -0.6,
     intro: '<b>往左上滑</b>，球就會飛到對方場地的左邊。高遠球、殺球、吊球都可以加方向。',
@@ -1634,6 +1639,8 @@ window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來�
   me.letGo = false; me.stand = standFor(me, me.plan); me.splitT = simT; me.reactAt = simT + HUMAN.react; planFootwork(me);
 };
 window.__testHit = (key, o, at) => { if (at) { Object.assign(shuttle.p, at); cpu.pos.x = at.x; cpu.pos.z = at.z - 0.4; } shuttle.held = false; hit(cpu, key, o || {}); }; // 測試用：讓電腦打指定的球
+window.__serveMe = even => { scores[0] = even ? 0 : 1; scores[1] = 0; server = 0; serverActor = me; setupServe(); }; // 測試用：輪到我在右區（雙數）或左區發球
+window.__testMeHit = (key, o, at) => { Object.assign(shuttle.p, at); me.pos.x = at.x; me.pos.z = at.z + 0.4; shuttle.held = false; phase = 'rally'; hit(me, key, o || {}); const s = simulate({ ...shuttle.p }, { ...shuttle.v }); return s.land; }; // 測試用：玩家打指定的球，回傳落點
 window.__game = { settings, scores, games, me, cpu, mate, cpu2, actors, shuttle, get serverActor() { return serverActor; }, get receiverActor() { return receiverActor; }, get phase() { return phase; }, get simT() { return simT; } };
 
 // 測試用：把動作錄成連續格（一張圖排成格子），方便和真人影片逐格比對
