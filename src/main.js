@@ -1,17 +1,17 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=103';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=103';
-import { attachGesture, chargeOf } from './gesture.js?v=103';
-import { loadVRM, Rig } from './character.js?v=103';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=103';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=110';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=110';
+import { attachGesture, chargeOf } from './gesture.js?v=110';
+import { loadVRM, Rig } from './character.js?v=110';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=110';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -305,8 +305,11 @@ function holdShuttle() {
   shuttle.v = { x: 0, y: 0, z: 0 };
 }
 
-function inBounds(x, z, side, serve) {
-  return Math.abs(x) <= COURT.halfW && Math.abs(z) <= COURT.halfL && z * side > 0 && (!serve || Math.abs(z) >= COURT.shortLine);
+// 界內：單打邊線、底線；發球還要過前發球線、落在對角的發球區（serveX＝發球的人站的 x；中線壓線算界內）
+function inBounds(x, z, side, serve, serveX) {
+  if (!(Math.abs(x) <= COURT.halfW && Math.abs(z) <= COURT.halfL && z * side > 0)) return false;
+  if (!serve) return true;
+  return Math.abs(z) >= COURT.shortLine && (serveX === undefined || x * Math.sign(serveX || 1) <= 0.02);
 }
 
 function hit(a, key, o) {
@@ -317,11 +320,12 @@ function hit(a, key, o) {
   if (spec.slice) tx += clamp(o.curve ?? 0, -0.5, 0.5) * 2;
   if (o.noPull) depth -= 1.8; // 沒拉拍：打不深
   if (o.backhand && !spec.serve) depth -= key === 'clear' ? 1.2 : 0.3; // 反手頭頂高遠不容易打深（反手下手挑球照樣挑得到底）
-  const err = ({ perfect: 0.08, good: 0.4, poor: 1.0 }[o.quality || 'good'] + (o.backhand ? 0.15 : 0)) * (o.errK ?? 1);
-  if (o.safe) { const m = err * o.safe; tx = clamp(tx, -COURT.halfW + m, COURT.halfW - m); if (!spec.serve) depth = Math.min(depth, COURT.halfL - m); } // 電腦：瞄準線內留邊界
+  const err = ({ perfect: 0.08, good: 0.4, poor: 1.0 }[o.quality || 'good'] + (o.backhand ? 0.15 : 0)) * (o.errK ?? 1) * (1 + 0.8 * tiredOf(a));
+  if (o.safe) { const m = err * o.safe; tx = clamp(tx, -COURT.halfW + m, COURT.halfW - m); if (!spec.serve) depth = Math.min(depth, COURT.halfL - m); else depth = Math.max(depth, COURT.shortLine + m); } // 電腦發短球：瞄前發球線後面一點 // 電腦：瞄準線內留邊界
   const ang = Math.random() * Math.PI * 2, rr = err * Math.sqrt(Math.random());
   tx += Math.cos(ang) * rr; depth = Math.max(0.15, depth + Math.sin(ang) * rr);
-  let power = (o.power ?? 0.6) * (o.quality === 'poor' ? 0.8 : o.quality === 'good' ? 0.93 : 1) * (o.backhand ? 0.75 : 1);
+  const tired = tiredOf(a);
+  let power = (o.power ?? 0.6) * (o.quality === 'poor' ? 0.8 : o.quality === 'good' ? 0.93 : 1) * (o.backhand ? 0.75 : 1) * (1 - 0.18 * tired);
   if (spec.big && key !== 'kill' && !spec.jump && o.y !== undefined) power *= clamp((o.y - 2.0) / 1.0, 0.6, 1); // 擊球點越高殺越快
   let sp2 = spec;
   if (spec.tight && !spec.serve) sp2 = { ...spec, margin: { perfect: 0.05, good: 0.2, poor: 0.4 }[o.quality || 'good'] }; // 小球貼不貼網看擊球品質：不夠好就冒高，對手可以搶網
@@ -353,7 +357,7 @@ function hit(a, key, o) {
     }
   }
   shuttle.v = { ...res.v };
-  Object.assign(shuttle, { held: false, lastHitter: a, tumble: !!spec.tumble, serve: !!spec.serve, netFault: false, bounces: 0, restT: 0, spin: 0 });
+  Object.assign(shuttle, { held: false, lastHitter: a, tumble: !!spec.tumble, serve: !!spec.serve, serveX: a.pos.x, netFault: false, bounces: 0, restT: 0, spin: 0 });
   if (spec.jump) a.recoverUntil = simT + 0.45; // 跳殺落地要時間，回位比較慢
   a.plan = null; a.swingT = simT; a.low = shuttle.p.y < 1.6; a.swingKind = o.fancy || (spec.serve ? (key === 'sserve' || key === 'fserve' ? 'serveB' : 'serveF') : strokeOf(a, shuttle.p));
   a.lastKey = key;
@@ -372,12 +376,13 @@ function hit(a, key, o) {
   opp.plan = predictContact(res.sim.pts, opp.side, simT, opp.pos, auto(opp) ? dOf(opp).react : HUMAN.react);
   opp.letGo = false;
   opp.stand = standFor(opp, opp.plan); opp.splitT = simT;
-  if (!auto(opp)) opp.reactAt = simT + HUMAN.react + (o.hold ? 0.15 : 0); // 對手停頓假動作：慢一拍
+  staminaHit(a, key, o);
+  if (!auto(opp)) opp.reactAt = simT + HUMAN.react + (o.hold ? 0.15 : 0) + 0.1 * tiredOf(opp); // 對手停頓假動作：慢一拍；累了也慢
   if (lesson && opp === cpu) { opp.plan = null; opp.letGo = true; }
   else if (auto(opp)) {
     const D = dOf(opp);
-    opp.reactAt = simT + D.react + (o.hold ? 0.3 : 0) + (spec.tumble ? 0.1 : 0);
-    const out = !inBounds(res.sim.land.x, res.sim.land.z, opp.side, spec.serve);
+    opp.reactAt = simT + D.react + (o.hold ? 0.3 : 0) + (spec.tumble ? 0.1 : 0) + 0.1 * tiredOf(opp);
+    const out = !inBounds(res.sim.land.x, res.sim.land.z, opp.side, spec.serve, a.pos.x);
     opp.letGo = out && Math.random() < D.readOut;
     if (!opp.letGo) { opp.swingT = opp.plan.t; opp.low = opp.plan.kind !== 'high'; opp.jumpT = opp.plan.t; opp.jumpRise = 0.275; opp.swingKind = strokeOf({ pos: opp.stand, side: opp.side }, opp.plan); aiPreChoose(opp); opp.contactP = { x: opp.plan.x, z: opp.plan.z }; opp.lungeAt = relOf({ pos: opp.stand, side: opp.side }, opp.plan); opp.lunge = opp.plan.y < 2.2 && Math.hypot(opp.plan.x - opp.stand.x, opp.plan.z - opp.stand.z) > 0.8; }
   }
@@ -630,7 +635,9 @@ function resolveLanding() {
   let winner, reason;
   if (s.netFault) { winner = other(h); reason = '掛網'; }
   else if (landSide === h.side) { winner = other(h); reason = '沒過網'; }
-  else if (inBounds(s.p.x, s.p.z, landSide, s.serve)) { winner = h; reason = '落地得分'; }
+  else if (inBounds(s.p.x, s.p.z, landSide, s.serve, s.serveX)) { winner = h; reason = '落地得分'; }
+  else if (s.serve && Math.abs(s.p.z) < COURT.shortLine && Math.abs(s.p.x) <= COURT.halfW) { winner = other(h); reason = '發球沒過前發球線'; }
+  else if (s.serve && Math.abs(s.p.x) <= COURT.halfW && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球發錯區（要發到對角）'; }
   else { winner = other(h); reason = '出界'; }
   point(winner, reason);
 }
@@ -681,22 +688,59 @@ function point(w, reason) {
     if (w !== me) { style.combo = 0; updateStyle(); }
   }
   scores[i]++; server = i;
+  if (!lesson) staminaPoint();
   for (const a of actors) { a.plan = null; a.letGo = false; }
   pending = null;
   updateScore();
   const T = settings.target, cap = T === 21 ? 30 : T + 9;
-  const won = (scores[i] >= T && scores[i] - scores[1 - i] >= 2) || scores[i] >= cap;
+  const gameWon = (scores[i] >= T && scores[i] - scores[1 - i] >= 2) || scores[i] >= cap;
   $('#banner').textContent = `${w === me ? '你得分' : '電腦得分'}・${reason}`;
   $('#banner').style.color = w === me ? '#ffd84d' : '#9fd0ff';
+  const need = settings.games === 3 ? 2 : 1;
+  if (gameWon) { games[i]++; gameLog.push(`${scores[0]}:${scores[1]}`); }
+  const won = gameWon && games[i] >= need;
+  if (gameWon && !won) { // 這局結束、比賽還沒結束：換場、勝方下一局先發
+    const n = games[0] + games[1];
+    $('#banner').textContent = `第 ${n} 局 ${w === me ? '你贏' : '電腦贏'}　${scores[0]}:${scores[1]}　（局數 ${games[0]}:${games[1]}）・換場`;
+    scores[0] = scores[1] = 0; server = i; midSwitched = false; for (const a of actors) a.stam = clamp((a.stam ?? 100) + 40, 0, 100); // 局間休息
+    phase = 'point'; phaseT = simT + 3.2; updateScore(); setHint();
+    return;
+  }
+  if (!gameWon && settings.games === 3 && games[0] + games[1] === 2 && !midSwitched && Math.max(scores[0], scores[1]) === 11) { // 決勝局 11 分換場
+    midSwitched = true;
+    $('#banner').textContent += '　・決勝局 11 分，換場';
+    phaseT = simT + 2.6;
+  }
   if (won) {
     phase = 'over';
     setTimeout(() => {
       $('#overtext').textContent = w === me ? '你贏了！' : '電腦贏了';
-      $('#overscore').innerHTML = `${scores[0]} : ${scores[1]}<br>風格分 ${style.total.toLocaleString()}・最高連擊 ${style.best}`;
+      $('#overscore').innerHTML = `${need > 1 ? `局數 ${games[0]} : ${games[1]}<br><small>${gameLog.join('・')}</small>` : `${scores[0]} : ${scores[1]}`}<br>風格分 ${style.total.toLocaleString()}・最高連擊 ${style.best}`;
       $('#over').classList.remove('hidden');
     }, 900);
-  } else { phase = 'point'; phaseT = simT + 1.5; }
+  } else { phase = 'point'; phaseT = Math.max(phaseT || 0, simT + 1.5); }
   setHint();
+}
+const games = [0, 0], gameLog = [];
+let midSwitched = false;
+
+// ---------- 3. 體力（設定開了才有）：跑動、殺球、跳殺、撲球、魚躍會累；每分之間恢復；累了反應慢、落點不準、殺不快 ----------
+const STAM_COST = { smash: 2.5, slicesmash: 2.5, stick: 1.5, jumpsmash: 5, kill: 1.5, clear: 1, aclear: 1, lift: 0.8, drive: 0.8, push: 0.8 }; // 大約打 20 分才會明顯累
+function tiredOf(a) { return settings.stamina ? clamp((45 - (a.stam ?? 100)) / 45, 0, 1) : 0; } // 0＝有力、1＝很累
+function staminaHit(a, key, o) {
+  if (!settings.stamina || lesson) return;
+  a.stam = clamp((a.stam ?? 100) - (STAM_COST[key] || 0.5) - (a.lunge ? 0.8 : 0) - (o.fancy === 'dive' ? 5 : 0), 0, 100);
+}
+function staminaMove(a, dist) { if (settings.stamina && !lesson) a.stam = clamp((a.stam ?? 100) - dist * 0.45, 0, 100); }
+function staminaPoint() { if (settings.stamina) for (const a of actors) a.stam = clamp((a.stam ?? 100) + 5, 0, 100); }
+function staminaUI() {
+  const el = $('#stam'); if (!el) return;
+  el.style.display = settings.stamina && !lesson ? 'flex' : 'none';
+  if (!settings.stamina) return;
+  for (const [k, a] of [['st0', me], ['st1', cpu]]) {
+    const v = a.stam ?? 100, b = $('#' + k);
+    b.style.width = v + '%'; b.style.background = v > 45 ? '#7ee2a8' : v > 20 ? '#ffd84d' : '#ff6b5a';
+  }
 }
 
 // 搶網：玩家按「搶網」→ 角色往網前衝
@@ -785,6 +829,7 @@ function moveActors() {
     if (a.pendingRecover && simT >= a.pendingRecover) { a.pendingRecover = 0; a.fw = planRecover(a, a.base, simT, true); }
     if (a.fw) { // 照排好的步法走：身體由每一步帶著
       const px = a.pos.x, pz = a.pos.z, b = bodyAt(a.fw, simT);
+      if (phase === 'rally') staminaMove(a, Math.hypot(b.x - px, b.z - pz));
       a.anim.bob = bobAt(a.fw, simT);
       a.pos.x = b.x; a.pos.z = b.z;
       a.vel = { x: (a.pos.x - px) / DT, z: (a.pos.z - pz) / DT };
@@ -899,7 +944,8 @@ function floorTick() {
 function updateScore() {
   $('#s0').textContent = scores[0]; $('#s1').textContent = scores[1];
   $('#d0').classList.toggle('on', server === 0); $('#d1').classList.toggle('on', server === 1);
-  $('#target').textContent = `${settings.target} 分制${settings.demo ? '・自動示範' : ''}`;
+  $('#target').textContent = `${settings.target} 分制${settings.games === 3 ? `・局數 ${games[0]}:${games[1]}` : ''}${settings.demo ? '・自動示範' : ''}`;
+  staminaUI();
 }
 let popTimer;
 function popup(main, sub, color) {
@@ -1025,9 +1071,10 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   settings[k] = v; saveSettings(); syncSettingsUI(); updateScore(); setHint();
   if (k === 'pers') { pickPers(); $('#ailabel').textContent = persLabel(); }
   if (k === 'opp') loadOpponent();
-  if (changedTarget) restart();
+  if (changedTarget || k === 'games') restart();
+  if (k === 'stamina') { for (const a of actors) a.stam = 100; staminaUI(); }
 }));
-function restart() { pickPers(); endLesson(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
+function restart() { games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
 $('#gear').onclick = () => { syncSettingsUI(); $('#settings').classList.remove('hidden'); };
 $('#close').onclick = () => $('#settings').classList.add('hidden');
 $('#restart').onclick = () => { restart(); $('#settings').classList.add('hidden'); };
@@ -1297,6 +1344,7 @@ function render(rdt) {
 
   placeCamera(rdt);
   updateFlash(rdt);
+  if (settings.stamina) staminaUI();
   if (shake > 0) { camera.position.x += rand(-1, 1) * shake * 0.3; camera.position.y += rand(-1, 1) * shake * 0.3; shake -= rdt; }
   const co = window.__camOverride; // 測試用特寫鏡頭
   if (co) { camera.position.set(...co.pos); camera.lookAt(...co.at); }
@@ -1335,7 +1383,7 @@ window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來�
   me.letGo = false; me.stand = standFor(me, me.plan); me.splitT = simT; me.reactAt = simT + HUMAN.react; planFootwork(me);
 };
 window.__testHit = (key, o, at) => { if (at) { Object.assign(shuttle.p, at); cpu.pos.x = at.x; cpu.pos.z = at.z - 0.4; } shuttle.held = false; hit(cpu, key, o || {}); }; // 測試用：讓電腦打指定的球
-window.__game = { settings, scores, me, cpu, shuttle, get phase() { return phase; }, get simT() { return simT; } };
+window.__game = { settings, scores, games, me, cpu, shuttle, get phase() { return phase; }, get simT() { return simT; } };
 
 // 測試用：把動作錄成連續格（一張圖排成格子），方便和真人影片逐格比對
 // o = { frames: 12, step: 0.1, cols: 6, cellW: 200, cam: { pos: [x,y,z], at: [x,y,z] } }

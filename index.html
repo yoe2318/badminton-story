@@ -36,6 +36,9 @@
   #swipe { touch-action:none; z-index:2; }
   .layer { position:absolute; z-index:3; pointer-events:none; }
   #topshade { left:0; right:0; top:0; height:84px; background:linear-gradient(#000a,#0000); }
+  #stam { position:absolute; z-index:3; top:40px; left:10px; width:150px; display:none; flex-direction:column; gap:3px; font-size:10px; color:#fff; text-shadow:0 1px 2px #000; }
+  #stam .bar { height:5px; background:#0006; border-radius:3px; overflow:hidden; }
+  #stam .bar i { display:block; height:100%; width:100%; background:#7ee2a8; transition:width .3s; }
   #score { top:10px; left:10px; right:64px; display:flex; gap:10px; align-items:center; font-weight:900; font-size:20px; text-shadow:0 1px 3px #0008; }
   #score .who { font-size:12px; font-weight:700; opacity:.85; }
   #score .dot { width:8px; height:8px; border-radius:50%; background:#ffd84d; display:inline-block; visibility:hidden; }
@@ -88,6 +91,7 @@
 <div id="frame">
   <canvas id="swipe"></canvas>
   <div id="topshade" class="layer"></div>
+  <div id="stam"><span>體力</span><div class="bar"><i id="st0"></i></div><div class="bar"><i id="st1" style="opacity:.8"></i></div></div>
   <div id="score" class="layer">
     <span><span class="who">你</span> <span id="s0">0</span> <span class="dot" id="d0"></span></span>
     <span>:</span>
@@ -157,8 +161,10 @@
 
   <div id="settings" class="overlay hidden">
     <h2>設定</h2>
-    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.0.3</p>
+    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.1.0</p>
     <div class="row"><span>分數</span><div class="seg" data-k="target"><button data-v="11">11</button><button data-v="15">15</button><button data-v="21">21</button></div></div>
+    <div class="row"><span>局數</span><div class="seg" data-k="games"><button data-v="1">一局</button><button data-v="3">三局兩勝</button></div></div>
+    <div class="row"><span>體力</span><div class="seg" data-k="stamina"><button data-v="0">關</button><button data-v="1">開</button></div></div>
     <div class="row"><span>電腦難度</span><div class="seg" data-k="diff"><button data-v="0">簡單</button><button data-v="1">普通</button><button data-v="2">困難</button><button data-v="3">高手</button></div></div>
     <div class="row"><span>慢動作（練習用）</span><div class="seg" data-k="slow"><button data-v="0">關</button><button data-v="1">開</button></div></div>
     <div class="row"><span>擊球慢動作輔助</span><div class="seg" data-k="assist"><button data-v="0">關</button><button data-v="1">開</button></div></div>
@@ -194,7 +200,7 @@
     <button class="btn" id="again">再來一局</button>
   </div>
 </div>
-<script type="module" src="src/main.js?v=103"></script>
+<script type="module" src="src/main.js?v=110"></script>
 <script>
 (() => {
   const btn = document.getElementById('install'), help = document.getElementById('installHelp');
