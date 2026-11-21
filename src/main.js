@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=120';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=120';
-import { attachGesture, chargeOf } from './gesture.js?v=120';
-import { loadVRM, Rig } from './character.js?v=120';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=120';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=130';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=130';
+import { attachGesture, chargeOf } from './gesture.js?v=130';
+import { loadVRM, Rig } from './character.js?v=130';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=130';
+import { buildArena } from './arena.js?v=130';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -76,8 +77,6 @@ Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 9, bottom: -9, near:
 scene.add(sun);
 
 (function buildCourt() {
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), noOutline(toon(0xd9a066)));
-  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
   const court = new THREE.Mesh(new THREE.PlaneGeometry(7.1, 14.6), noOutline(toon(0x3f9e74)));
   court.rotation.x = -Math.PI / 2; court.position.y = 0.005; court.receiveShadow = true; scene.add(court);
   const lm = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff })), W = 0.05;
@@ -105,6 +104,8 @@ scene.add(sun);
   const tape = new THREE.Mesh(new THREE.BoxGeometry(6.1, 0.075, 0.012), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff })));
   tape.position.set(0, NET_H - 0.02, 0); scene.add(tape);
 })();
+const arena = buildArena(scene, toon);
+let crowdCheer = 0; // 觀眾歡呼的程度（0～1，慢慢退）
 
 // 球拍（真實尺寸，整支再乘 0.9）：握把約 2.6 cm 粗、拍桿 7 mm、拍框寬 8 mm、拍面 22×28 cm、看得到拍線
 function makeRacket() {
@@ -315,7 +316,7 @@ function standFor(a, c) {
 }
 
 function setupServe() {
-  phase = 'serve';
+  phase = 'serve'; rallyHits = 0;
   if (!dbl()) {
     serverActor = actors[server]; receiverActor = other(serverActor);
     const s = serverActor, r = receiverActor, even = scores[server] % 2 === 0;
@@ -495,7 +496,9 @@ function hit(a, key, o) {
   phase = 'rally';
   const kmh = Math.round(Math.hypot(res.v.x, res.v.y, res.v.z) * 3.6);
   const feel = feelOf(key);
-  sfx(key); hitFlash(shuttle.p, feel);
+  sfx(key); hitFlash(shuttle.p, feel); rallyHits++;
+  if (a.lunge) squeak(a, 0); if (spec.jump) squeak(a, 0.42); // 跨步、跳殺落地：球鞋摩擦聲
+  if (kmh >= 300 && !lesson) roar(0.35, 380); // 很快的殺球：觀眾「喔～」
   hitStop = spec.jump ? 0.02 : feel === 'heavy' ? 0.045 : feel === 'solid' ? 0.02 : 0.006; // 擊球瞬間的停頓：重擊停一下、輕球幾乎不停
   shake = Math.max(shake, feel === 'heavy' ? (spec.jump ? 0.38 : 0.28) : feel === 'solid' ? 0.06 : 0);
   if (a === me) {
@@ -794,6 +797,7 @@ function point(w, reason) {
     if (w !== me) { style.combo = 0; updateStyle(); }
   }
   scores[i]++;
+  const prevServer = server;
   if (dbl()) { // 雙打發球輪轉
     if (serverActor.side === w.side) rightCourt[w.side] = rightCourt[w.side] === serverActor ? mateOf(serverActor) : serverActor; // 發球方得分：發球員換區、繼續發
     else serverActor = scores[i] % 2 === 0 ? rightCourt[w.side] : mateOf(rightCourt[w.side]);                                 // 換對方發：站在對的區的人發
@@ -814,7 +818,8 @@ function point(w, reason) {
     const n = games[0] + games[1];
     $('#banner').textContent = `第 ${n} 局 ${i === 0 ? '你贏' : '電腦贏'}　${scores[0]}:${scores[1]}　（局數 ${games[0]}:${games[1]}）・換場`;
     scores[0] = scores[1] = 0; server = i; midSwitched = false;
-    if (dbl()) serverActor = rightCourt[w.side]; // 新的一局：勝方右區的人先發 for (const a of actors) a.stam = clamp((a.stam ?? 100) + 40, 0, 100); // 局間休息
+    if (dbl()) serverActor = rightCourt[w.side]; // 新的一局：勝方右區的人先發
+    for (const a of actors) a.stam = clamp((a.stam ?? 100) + 40, 0, 100); // 局間休息
     phase = 'point'; phaseT = simT + 3.2; updateScore(); setHint();
     return;
   }
@@ -823,6 +828,8 @@ function point(w, reason) {
     $('#banner').textContent += '　・決勝局 11 分，換場';
     phaseT = simT + 2.6;
   }
+  crowdReact(w, reason, gameWon, won);
+  umpireCall(i, prevServer, gameWon, won, T, cap);
   if (won) {
     phase = 'over';
     setTimeout(() => {
@@ -1024,7 +1031,7 @@ function fixed() {
   const zPrev = shuttle.p.z;
   step(shuttle);
   if (!shuttle.netFault && Math.sign(zPrev) !== Math.sign(shuttle.p.z) && shuttle.p.y < NET_H) {
-    shuttle.netFault = true;
+    shuttle.netFault = true; netSound();
     shuttle.p.z = zPrev > 0 ? 0.06 : -0.06;
     shuttle.v = { x: 0, y: Math.min(shuttle.v.y, 0), z: 0 };
     for (const a of actors) a.plan = null;
@@ -1041,6 +1048,7 @@ function floorHit() {
   const v = shuttle.v, sp = Math.hypot(v.x, v.z);
   shuttle.lieDir = sp > 0.05 ? { x: v.x / sp, z: v.z / sp } : (shuttle.lieDir || { x: 0, z: -1 });
   shuttle.bounces = (shuttle.bounces || 0) + 1;
+  floorSound(Math.min(1, -v.y / 6) * (shuttle.bounces === 1 ? 1 : 0.4));
   if (v.y < -1.5 && shuttle.bounces <= 2) { // 彈起來：軟木有彈性，羽毛很快把速度吃掉
     v.y = -v.y * (shuttle.bounces === 1 ? 0.3 : 0.18); v.x *= 0.45; v.z *= 0.45;
     shuttle.p.y = 0.001; shuttle.spin = (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6);
@@ -1057,6 +1065,7 @@ function updateScore() {
   $('#s0').textContent = scores[0]; $('#s1').textContent = scores[1];
   { const w = document.querySelectorAll('#score .who'); if (w.length >= 2) { w[0].textContent = dbl() ? '你們' : '你'; w[1].textContent = dbl() ? '電腦隊' : '電腦'; } }
   $('#d0').classList.toggle('on', server === 0); $('#d1').classList.toggle('on', server === 1);
+  arena.setScore(dbl() ? ['你們', '電腦隊'] : ['你', '電腦'], scores[0], scores[1], settings.games === 3 ? `局數 ${games[0]} : ${games[1]}` : `${settings.target} 分制`);
   $('#target').textContent = `${settings.target} 分制${settings.games === 3 ? `・局數 ${games[0]}:${games[1]}` : ''}${settings.demo ? '・自動示範' : ''}`;
   staminaUI();
 }
@@ -1093,7 +1102,118 @@ function zoneHint(r) {
   if (key) $('#hint').textContent = ZONE_HINT[key]; else setHint();
 }
 
-let actx = null;
+let actx = null, master = null, crowdBed = null, rallyHits = 0;
+function ensureAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
+  if (actx.state === 'suspended') actx.resume();
+  if (!crowdBed) startCrowdBed();
+  applySound();
+}
+function audioOut() {
+  if (!master) { master = actx.createGain(); master.connect(actx.destination); master.gain.value = settings.sound ? 1 : 0; }
+  return master;
+}
+function applySound() {
+  if (master) master.gain.value = settings.sound ? 1 : 0;
+  if (crowdBed) crowdBed.gain.value = settings.crowd ? 0.05 : 0;
+  arena.setCrowdVisible(!!settings.crowd);
+}
+// 雜訊緩衝（env(i/n) 決定音量變化）
+function noiseBuf(sec, env) {
+  const n = Math.floor(sec * actx.sampleRate), b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * env(i / n, i);
+  return b;
+}
+function play(buf, chain, gain, when = 0) {
+  const s = actx.createBufferSource(); s.buffer = buf;
+  let node = s; for (const f of chain) node = node.connect(f);
+  const g = actx.createGain(); g.gain.value = gain; node.connect(g).connect(audioOut());
+  s.start(actx.currentTime + when); return s;
+}
+const bq = (type, freq, q = 1) => { const f = actx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; };
+// 觀眾的背景人聲：一直循環、很小聲
+function startCrowdBed() {
+  const sr = actx.sampleRate, k = [0.31, 0.53, 0.87, 1.37].map(f => [f, Math.random() * 6.28]);
+  const buf = noiseBuf(6, (u, i) => { const t = i / sr; return 0.55 + 0.45 * k.reduce((a, [f, p]) => a + Math.sin(t * f * 6.28 + p) / 4, 0); });
+  const s = actx.createBufferSource(); s.buffer = buf; s.loop = true;
+  crowdBed = actx.createGain(); crowdBed.gain.value = 0;
+  s.connect(bq('bandpass', 520, 0.7)).connect(bq('lowpass', 1400)).connect(crowdBed).connect(audioOut()); s.start();
+}
+// 觀眾吶喊（「喔～」「耶～」）：雜訊通過人聲的共振峰
+function roar(level, f1 = 650) {
+  if (!actx || !settings.crowd) return;
+  const len = 1.2 + level * 1.2;
+  const buf = noiseBuf(len, u => Math.min(1, u * 12) * Math.pow(1 - u, 1.6));
+  play(buf, [bq('bandpass', f1, 1.6)], 0.9 * level);
+  play(buf, [bq('bandpass', f1 * 1.75, 2.2)], 0.45 * level);
+  crowdCheer = Math.max(crowdCheer, level * 0.6);
+}
+// 掌聲：很多個短短的「啪」，隨機時間點
+function applause(level) {
+  if (!actx || !settings.crowd) return;
+  const sr = actx.sampleRate, len = 1.6 + level * 2.2, n = Math.floor(len * sr), b = actx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const claps = Math.floor((120 + 520 * level) * len);
+  for (let c = 0; c < claps; c++) {
+    const u = Math.pow(Math.random(), 1.4), i0 = Math.floor(u * n), amp = (0.3 + Math.random() * 0.7) * Math.pow(1 - u, 0.8), L = Math.floor(sr * (0.004 + Math.random() * 0.006));
+    for (let i = 0; i < L && i0 + i < n; i++) d[i0 + i] += (Math.random() * 2 - 1) * amp * Math.exp(-i / (L * 0.3));
+  }
+  for (let i = 0; i < Math.min(n, sr * 0.05); i++) d[i] *= i / (sr * 0.05);
+  play(b, [bq('highpass', 700), bq('peaking', 2200, 1)], 0.16 + 0.1 * level);
+}
+// 球鞋摩擦聲（跨步、急停、跳起落地）
+function squeak(a, delay) {
+  if (!actx || Math.random() < 0.25) return;
+  const near = a.side === me.side ? 1 : 0.45, t = actx.currentTime + delay, len = 0.07 + Math.random() * 0.08;
+  const o = actx.createOscillator(), g = actx.createGain(), f0 = 1500 + Math.random() * 900;
+  o.type = 'triangle';
+  const curve = new Float32Array(16); for (let i = 0; i < 16; i++) curve[i] = f0 * (1 + 0.35 * i / 15) + 120 * Math.sin(i * 2.2);
+  o.frequency.setValueCurveAtTime(curve, t, len);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05 * near, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  o.connect(bq('bandpass', 2200, 1.5)).connect(g).connect(audioOut()); o.start(t); o.stop(t + len + 0.02);
+}
+// 球打到網子：網子晃動的悶聲
+function netSound() { if (actx) { noiseHit(0.16, 260, 0.7, 0.55, 'lowpass', 2); noiseHit(0.05, 1300, 1, 0.12); } }
+// 球落地：軟木頭敲到地板的「叩」
+function floorSound(k) { if (actx && k > 0.05) { noiseHit(0.025, 1700, 2.2, 0.45 * k, 'bandpass', 4); thump(420, 0.04, 0.12 * k); } }
+// 得分時觀眾的反應：來回越多拍、殺球、壓線越熱烈；你（你們）得分比電腦得分熱烈
+function crowdReact(w, reason, gameWon, won) {
+  if (lesson || !actx) return;
+  const mine = w.side === me.side;
+  let lv = 0.3 + Math.min(0.35, rallyHits * 0.03);
+  const nearLine = reason === '落地得分' && Math.min(halfW() - Math.abs(shuttle.p.x), COURT.halfL - Math.abs(shuttle.p.z)) < 0.15;
+  if (nearLine || ['smash', 'stick', 'slicesmash', 'jumpsmash', 'kill'].includes(shuttle.lastHitter?.lastKey)) lv += 0.15;
+  if (reason !== '落地得分') lv *= 0.55; // 對方失誤：掌聲比較小
+  if (!mine) lv *= 0.6;
+  if (gameWon) lv = won ? 1 : 0.85;
+  applause(Math.min(1, lv));
+  if (lv > 0.45) roar(lv * (mine ? 1 : 0.7));
+  crowdCheer = Math.max(crowdCheer, lv);
+}
+// 裁判報分（瀏覽器的語音）：發球方的分數先講；換發球、局點、賽點也會講
+function say(text) {
+  if (!settings.call || !('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = 1.05; u.volume = settings.sound ? 1 : 0;
+    const v = speechSynthesis.getVoices().find(v => /zh[-_]TW/i.test(v.lang)) || speechSynthesis.getVoices().find(v => /^zh/i.test(v.lang));
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function umpireCall(i, prevServer, gameWon, won, T, cap) {
+  if (lesson) return;
+  if (won) { setTimeout(() => say('比賽結束'), 400); return; }
+  if (gameWon) { setTimeout(() => say(`第${games[0] + games[1]}局，${i === 0 ? (dbl() ? '你們' : '你') : '電腦'}勝`), 400); return; }
+  const a = scores[server], b = scores[1 - server];
+  let t = a === b ? `${a}平` : `${a}比${b}`;
+  if (server !== prevServer) t = '換發球，' + t;
+  const hi = Math.max(a, b), lo = Math.min(a, b);
+  if (hi !== lo && ((hi >= T - 1 && hi - lo >= 1) || hi === cap - 1)) {
+    const lead = a > b ? server : 1 - server, need = settings.games === 3 ? 2 : 1;
+    t += games[lead] + 1 >= need ? '，賽點' : '，局點';
+  }
+  setTimeout(() => say(t), 450);
+}
 // 擊球聲：noise＝拍線打到球的「啪」；thump＝低音的力量感
 function noiseHit(len, freq, q, gain, type = 'bandpass', decay = 3) {
   const n = Math.floor(len * actx.sampleRate), b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
@@ -1101,13 +1221,13 @@ function noiseHit(len, freq, q, gain, type = 'bandpass', decay = 3) {
   const s = actx.createBufferSource(); s.buffer = b;
   const f = actx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
   const g = actx.createGain(); g.gain.value = gain;
-  s.connect(f).connect(g).connect(actx.destination); s.start();
+  s.connect(f).connect(g).connect(audioOut()); s.start();
 }
 function thump(freq, len, gain) {
   const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
   o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + len);
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
-  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + len);
+  o.connect(g).connect(audioOut()); o.start(t); o.stop(t + len);
 }
 // 擊球的三種感覺：heavy（殺、撲）、solid（高遠、挑、抽、推）、soft（放網、搓、吊、擋）
 const FEEL = { smash: 'heavy', jumpsmash: 'heavy', slicesmash: 'heavy', stick: 'heavy', kill: 'heavy',
@@ -1141,7 +1261,7 @@ function updateFlash(dt) {
 let swipePts = null, swipeFade = 0;
 attachGesture(swipeCv, {
   onStart: () => {
-    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    ensureAudio();
     me.touching = true;
     const r = reachInfo();
     me.prepKind = strokeOf(me, r ? shuttle.p : me.plan ? me.plan : { x: me.pos.x, y: 2.5, z: me.pos.z });
@@ -1186,6 +1306,8 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   if (k === 'opp') loadOpponent();
   if (changedTarget || k === 'games' || k === 'mode') restart();
   if (k === 'stamina') { for (const a of actors) a.stam = 100; staminaUI(); }
+  if (k === 'sound' || k === 'crowd') applySound();
+  if (k === 'call' && v) { ensureAudio(); say('報分開啟'); }
 }));
 function restart() { serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
 $('#gear').onclick = () => { syncSettingsUI(); $('#settings').classList.remove('hidden'); };
@@ -1194,7 +1316,7 @@ $('#restart').onclick = () => { restart(); $('#settings').classList.add('hidden'
 $('#showhelp').onclick = () => { $('#settings').classList.add('hidden'); $('#help').classList.remove('hidden'); };
 $('#start').onclick = () => {
   $('#help').classList.add('hidden'); restart();
-  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  ensureAudio();
 };
 $('#again').onclick = restart;
 
@@ -1349,7 +1471,7 @@ function openLessonMenu() {
   });
   $('#lessons').classList.remove('hidden');
 }
-$('#tolessons').onclick = () => { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } openLessonMenu(); };
+$('#tolessons').onclick = () => { ensureAudio(); openLessonMenu(); };
 $('#menulessons').onclick = openLessonMenu;
 $('#introgo').onclick = () => startLesson(Number($('#intro').dataset.i));
 $('#introback').onclick = openLessonMenu;
@@ -1458,6 +1580,7 @@ function render(rdt) {
 
   placeCamera(rdt);
   updateFlash(rdt);
+  if (settings.crowd) { arena.update(performance.now() / 1000, crowdCheer); crowdCheer = Math.max(0, crowdCheer - rdt * 0.35); }
   if (settings.stamina) staminaUI();
   if (shake > 0) { camera.position.x += rand(-1, 1) * shake * 0.3; camera.position.y += rand(-1, 1) * shake * 0.3; shake -= rdt; }
   const co = window.__camOverride; // 測試用特寫鏡頭
@@ -1490,6 +1613,8 @@ function loop(now) {
 syncSettingsUI();
 pickPers();
 applyMode();
+applySound();
+updateScore();
 setupServe();
 requestAnimationFrame(loop);
 window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來的球（玩家照正常流程判斷）
