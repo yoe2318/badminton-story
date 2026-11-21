@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=131';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=131';
-import { attachGesture, chargeOf } from './gesture.js?v=131';
-import { loadVRM, Rig } from './character.js?v=131';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=131';
-import { buildArena } from './arena.js?v=131';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=140';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=140';
+import { attachGesture, chargeOf } from './gesture.js?v=140';
+import { loadVRM, Rig } from './character.js?v=140';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=140';
+import { buildArena } from './arena.js?v=140';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -220,23 +220,33 @@ const kindOf = y => (y >= 2.0 ? 'over' : y >= 1.0 ? 'side' : 'under');
 // 角色：自己＝models/player.vrm（私人手機版嵌在 model_data.js）；對手＝設定選的 CC0 角色（VRoid 官方 β 版範本，CC0），沒有檔案就跟自己同一個
 const OPP_MODELS = ['models/cc0_D.vrm', 'models/cc0_E.vrm', 'models/cc0_F.vrm', 'models/cc0_G.vrm'];
 let playerURL = 'models/player.vrm';
+// 角色編號：0＝自己捏的貓耳浴衣、1～4＝CC0 角色（渋、ビビ、ヴィータ、ヴィクトリア）
+const charURL = id => (id > 0 ? OPP_MODELS[id - 1] : playerURL);
 async function putRig(a, url) {
+  const token = a.rigToken = (a.rigToken || 0) + 1; // 連續換角色時，只用最後一次選的
   const vrm = await loadVRM(url);
+  if (token !== a.rigToken) return;
   const rig = new Rig(vrm, makeRacket(), a.side > 0 ? -1 : 1);
   if (a.rig) scene.remove(a.rig.root);
-  scene.add(rig.root); a.mesh.visible = false; a.rig = rig;
+  scene.add(rig.root); a.mesh.visible = false; a.rig = rig; a.rigURL = url;
+  if (a === mate || a === cpu2) rig.root.visible = actors.includes(a);
 }
-// 雙打的隊友和第二個電腦：用另外兩個 CC0 角色（第一次切到雙打才下載）
-let doublesLoading = false;
+async function loadMe() {
+  try { await putRig(me, charURL(settings.me || 0)); }
+  catch (e) { try { await putRig(me, playerURL); } catch (e2) { console.error('角色載入失敗，先用方塊人', e2); } }
+}
+// 雙打的隊友和第二個電腦：用你和對手沒用到的角色（第一次切到雙打才下載；換角色後會重選）
+let doublesLoading = false, doublesAgain = false;
 async function loadDoublesRigs() {
-  if (doublesLoading) return; doublesLoading = true;
-  const o = settings.opp || 0;
-  for (const [a, k] of [[mate, (o + 1) % 4], [cpu2, (o + 2) % 4]]) {
-    if (a.rig) continue;
-    try { await putRig(a, OPP_MODELS[k]); } catch (e) { try { await putRig(a, playerURL); } catch (e2) {} }
-    if (a.rig) a.rig.root.visible = actors.includes(a);
+  if (doublesLoading) { doublesAgain = true; return; } doublesLoading = true;
+  const used = [settings.me || 0, (settings.opp || 0) + 1];
+  const free = [1, 2, 3, 4, 0].filter(id => !used.includes(id));
+  for (const [a, id] of [[mate, free[0]], [cpu2, free[1]]]) {
+    if (a.rig && a.rigURL === charURL(id)) continue;
+    try { await putRig(a, charURL(id)); } catch (e) { try { await putRig(a, playerURL); } catch (e2) {} }
   }
   doublesLoading = false;
+  if (doublesAgain) { doublesAgain = false; if (dbl()) loadDoublesRigs(); }
 }
 async function loadOpponent() {
   try { await putRig(cpu, OPP_MODELS[settings.opp || 0]); }
@@ -244,8 +254,8 @@ async function loadOpponent() {
 }
 (async () => {
   try {
-    await putRig(me, playerURL);
-  } catch (e) { console.error('角色載入失敗，先用方塊人', e); }
+  } catch (e) {}
+  await loadMe();
   await loadOpponent();
 })();
 
@@ -1303,7 +1313,8 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   const k = seg.dataset.k, v = Number(b.dataset.v), changedTarget = k === 'target' && v !== settings.target;
   settings[k] = v; saveSettings(); syncSettingsUI(); updateScore(); setHint();
   if (k === 'pers') { pickPers(); $('#ailabel').textContent = persLabel(); }
-  if (k === 'opp') loadOpponent();
+  if (k === 'opp') { loadOpponent(); if (dbl()) loadDoublesRigs(); }
+  if (k === 'me') { loadMe(); if (dbl()) loadDoublesRigs(); }
   if (changedTarget || k === 'games' || k === 'mode') restart();
   if (k === 'stamina') { for (const a of actors) a.stam = 100; staminaUI(); }
   if (k === 'sound' || k === 'crowd') applySound();
