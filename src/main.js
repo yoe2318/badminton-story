@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=100';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=100';
-import { attachGesture, chargeOf } from './gesture.js?v=100';
-import { loadVRM, Rig } from './character.js?v=100';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=100';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=101';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=101';
+import { attachGesture, chargeOf } from './gesture.js?v=101';
+import { loadVRM, Rig } from './character.js?v=101';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=101';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);

@@ -276,7 +276,11 @@ export class Rig {
     this.vrm = vrm;
     this.root = new THREE.Group();
     this.root.add(vrm.scene);
-    vrm.scene.rotation.y = facing < 0 ? Math.PI : 0; // 近端球員面向 -Z
+    // 舊版 VRM 0.x 的模型面朝 -Z、骨架座標是新版繞垂直軸轉 180°：模型多轉 180°，每格算完的骨頭旋轉再換成舊版方向（three-vrm 官方做法）
+    this.v0 = vrm.meta?.metaVersion === '0';
+    this.faceRot = facing < 0 ? Math.PI : 0; // 近端球員面向 -Z
+    vrm.scene.rotation.y = this.faceRot + (this.v0 ? Math.PI : 0);
+    this.allBones = Object.values(vrm.humanoid.normalizedHumanBones || {}).map(h => h && h.node).filter(Boolean);
     const b = n => vrm.humanoid.getNormalizedBoneNode(n);
     this.b = {
       hips: b('hips'), spine: b('spine'), chest: b('chest'), upperChest: b('upperChest'), neck: b('neck'), head: b('head'),
@@ -292,7 +296,7 @@ export class Rig {
     vrm.scene.scale.setScalar(this.scale);
     // 腿長、髖關節位置（腳踩地的 IK 要用）
     vrm.scene.updateMatrixWorld(true);
-    const wp = n => { const v = new THREE.Vector3(); n.getWorldPosition(v); const r = rotY(v.x, v.z, -vrm.scene.rotation.y); return new THREE.Vector3(r.x, v.y, r.z); };
+    const wp = n => { const v = new THREE.Vector3(); n.getWorldPosition(v); const r = rotY(v.x, v.z, -this.faceRot); return new THREE.Vector3(r.x, v.y, r.z); };
     const pRT = wp(this.b.rT), pRS = wp(this.b.rS), pRF = wp(this.b.rFt), pLT = wp(this.b.lT);
     this.hipOff = { R: pRT, L: pLT };
     this.L1 = pRT.distanceTo(pRS); this.L2 = pRS.distanceTo(pRF); this.ankleY = pRF.y;
@@ -300,7 +304,8 @@ export class Rig {
     racket.scale.setScalar(0.9 / this.scale); // 拍子全長約 67 公分（真實尺寸）
     const holder = new THREE.Group(); holder.position.set(-0.06, 0, 0); holder.rotation.y = 0.5;
     holder.add(racket);
-    this.b.rH.add(holder);
+    if (this.v0) { const fix = new THREE.Group(); fix.rotation.y = Math.PI; fix.add(holder); this.b.rH.add(fix); } // 舊版手的座標轉 180°
+    else this.b.rH.add(holder);
     this.yaw = 0;
     this.fingers = [];
     for (const side of ['right', 'left']) {
@@ -439,7 +444,10 @@ export class Rig {
   }
 
   // a：球員狀態（a.anim 由遊戲每格算好）；t：遊戲時間
+  // 舊版 VRM：骨頭旋轉在「新版方向」和「舊版方向」之間換算（x、z 分量反號，換兩次＝還原）
+  flipV0() { if (this.v0) for (const n of this.allBones) { n.quaternion.x = -n.quaternion.x; n.quaternion.z = -n.quaternion.z; } }
   update(a, t, dt, jumpY) {
+    this.flipV0(); // 換回新版方向來算這一格
     const an = a.anim || {};
     const speed = an.speed || 0;
     let base = an.relax > 0 ? mixPose(READY, RELAX, an.relax) : READY;
@@ -481,7 +489,7 @@ export class Rig {
     const ty = an.bodyYaw || 0;
     this.yaw += (ty - this.yaw) * Math.min(1, dt * 9);
     this.root.rotation.y = this.yaw;
-    const th = this.yaw + this.vrm.scene.rotation.y;
+    const th = this.yaw + this.faceRot;
     // 墊步時身體小跳
     const hop = an.split > 0 && an.split < 1 ? Math.sin(Math.PI * an.split) * 0.06 : 0;
     const rootPos = { x: a.pos.x, y: jumpY + hop + (an.bob || 0) - pose.drop * this.scale, z: a.pos.z };
@@ -574,7 +582,7 @@ export class Rig {
       const w = d < 0 ? smooth(clampN((d + 0.3) / 0.25, 0, 1)) : 1 - smooth(clampN(d / 0.15, 0, 1));
       const sh = new THREE.Vector3(); B.rU.getWorldPosition(sh);
       const dir = new THREE.Vector3(a.aimP.x - sh.x, a.aimP.y - sh.y, a.aimP.z - sh.z);
-      const sq = new THREE.Quaternion(); this.vrm.scene.getWorldQuaternion(sq);
+      const sq = new THREE.Quaternion(); this.root.getWorldQuaternion(sq); sq.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.faceRot)); // 身體座標（不含舊版模型多轉的 180°）
       dir.applyQuaternion(sq.invert()).normalize(); // 換成身體座標
       const up = dir.clone().add(new THREE.Vector3(0, -0.18, 0)).normalize(); // 手肘微彎
       arms.rU.lerp(up, w).normalize(); arms.rF.lerp(dir, w).normalize();
@@ -606,8 +614,9 @@ export class Rig {
     this.smoothBones.forEach((n, i) => { const tgt = n.quaternion.clone(); n.quaternion.copy(prevQ[i]).slerp(tgt, k); });
     this.root.position.set(rootPos.x, rootPos.y, rootPos.z);
     // 魚躍：整個人往前倒（繞身體左右軸轉）
-    const face = Math.abs(this.vrm.scene.rotation.y) > 1 ? -1 : 1;
+    const face = this.faceRot > 1 ? -1 : 1;
     this.root.rotation.set(face * 1.25 * dive, this.yaw, 0, 'YXZ');
+    this.flipV0(); // 算完換成舊版方向給模型用
     this.vrm.update(dt);
   }
 
