@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=130';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=130';
-import { attachGesture, chargeOf } from './gesture.js?v=130';
-import { loadVRM, Rig } from './character.js?v=130';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=130';
-import { buildArena } from './arena.js?v=130';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=131';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=131';
+import { attachGesture, chargeOf } from './gesture.js?v=131';
+import { loadVRM, Rig } from './character.js?v=131';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=131';
+import { buildArena } from './arena.js?v=131';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1103,20 +1103,20 @@ function zoneHint(r) {
 }
 
 let actx = null, master = null, crowdBed = null, rallyHits = 0;
+const EXTRA_SFX = false; // 觀眾聲、球鞋、掛網、落地、裁判報分：使用者說先不要（2026-11-21），留著之後要再打開
 function ensureAudio() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
   if (actx.state === 'suspended') actx.resume();
-  if (!crowdBed) startCrowdBed();
+  if (EXTRA_SFX && !crowdBed) startCrowdBed();
   applySound();
 }
 function audioOut() {
-  if (!master) { master = actx.createGain(); master.connect(actx.destination); master.gain.value = settings.sound ? 1 : 0; }
+  if (!master) { master = actx.createGain(); master.connect(actx.destination); master.gain.value = 1; }
   return master;
 }
 function applySound() {
-  if (master) master.gain.value = settings.sound ? 1 : 0;
   if (crowdBed) crowdBed.gain.value = settings.crowd ? 0.05 : 0;
-  arena.setCrowdVisible(!!settings.crowd);
+  arena.setCrowdVisible(true);
 }
 // 雜訊緩衝（env(i/n) 決定音量變化）
 function noiseBuf(sec, env) {
@@ -1141,7 +1141,7 @@ function startCrowdBed() {
 }
 // 觀眾吶喊（「喔～」「耶～」）：雜訊通過人聲的共振峰
 function roar(level, f1 = 650) {
-  if (!actx || !settings.crowd) return;
+  if (!EXTRA_SFX || !actx || !settings.crowd) return;
   const len = 1.2 + level * 1.2;
   const buf = noiseBuf(len, u => Math.min(1, u * 12) * Math.pow(1 - u, 1.6));
   play(buf, [bq('bandpass', f1, 1.6)], 0.9 * level);
@@ -1150,7 +1150,7 @@ function roar(level, f1 = 650) {
 }
 // 掌聲：很多個短短的「啪」，隨機時間點
 function applause(level) {
-  if (!actx || !settings.crowd) return;
+  if (!EXTRA_SFX || !actx || !settings.crowd) return;
   const sr = actx.sampleRate, len = 1.6 + level * 2.2, n = Math.floor(len * sr), b = actx.createBuffer(1, n, sr), d = b.getChannelData(0);
   const claps = Math.floor((120 + 520 * level) * len);
   for (let c = 0; c < claps; c++) {
@@ -1162,7 +1162,7 @@ function applause(level) {
 }
 // 球鞋摩擦聲（跨步、急停、跳起落地）
 function squeak(a, delay) {
-  if (!actx || Math.random() < 0.25) return;
+  if (!EXTRA_SFX || !actx || Math.random() < 0.25) return;
   const near = a.side === me.side ? 1 : 0.45, t = actx.currentTime + delay, len = 0.07 + Math.random() * 0.08;
   const o = actx.createOscillator(), g = actx.createGain(), f0 = 1500 + Math.random() * 900;
   o.type = 'triangle';
@@ -1172,9 +1172,9 @@ function squeak(a, delay) {
   o.connect(bq('bandpass', 2200, 1.5)).connect(g).connect(audioOut()); o.start(t); o.stop(t + len + 0.02);
 }
 // 球打到網子：網子晃動的悶聲
-function netSound() { if (actx) { noiseHit(0.16, 260, 0.7, 0.55, 'lowpass', 2); noiseHit(0.05, 1300, 1, 0.12); } }
+function netSound() { if (EXTRA_SFX && actx) { noiseHit(0.16, 260, 0.7, 0.55, 'lowpass', 2); noiseHit(0.05, 1300, 1, 0.12); } }
 // 球落地：軟木頭敲到地板的「叩」
-function floorSound(k) { if (actx && k > 0.05) { noiseHit(0.025, 1700, 2.2, 0.45 * k, 'bandpass', 4); thump(420, 0.04, 0.12 * k); } }
+function floorSound(k) { if (EXTRA_SFX && actx && k > 0.05) { noiseHit(0.025, 1700, 2.2, 0.45 * k, 'bandpass', 4); thump(420, 0.04, 0.12 * k); } }
 // 得分時觀眾的反應：來回越多拍、殺球、壓線越熱烈；你（你們）得分比電腦得分熱烈
 function crowdReact(w, reason, gameWon, won) {
   if (lesson || !actx) return;
@@ -1191,7 +1191,7 @@ function crowdReact(w, reason, gameWon, won) {
 }
 // 裁判報分（瀏覽器的語音）：發球方的分數先講；換發球、局點、賽點也會講
 function say(text) {
-  if (!settings.call || !('speechSynthesis' in window)) return;
+  if (!EXTRA_SFX || !settings.call || !('speechSynthesis' in window)) return;
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = 1.05; u.volume = settings.sound ? 1 : 0;
@@ -1580,7 +1580,7 @@ function render(rdt) {
 
   placeCamera(rdt);
   updateFlash(rdt);
-  if (settings.crowd) { arena.update(performance.now() / 1000, crowdCheer); crowdCheer = Math.max(0, crowdCheer - rdt * 0.35); }
+  { arena.update(performance.now() / 1000, crowdCheer); crowdCheer = Math.max(0, crowdCheer - rdt * 0.35); }
   if (settings.stamina) staminaUI();
   if (shake > 0) { camera.position.x += rand(-1, 1) * shake * 0.3; camera.position.y += rand(-1, 1) * shake * 0.3; shake -= rdt; }
   const co = window.__camOverride; // 測試用特寫鏡頭
