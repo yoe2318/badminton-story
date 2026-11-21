@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#14130f">
 <title>羽球物語</title>
+<script>addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.gameInstall = e; dispatchEvent(new Event('game:installable')); });</script>
+<style>
+  #install { position:absolute; z-index:4; top:8px; right:64px; font:inherit; font-size:13px; padding:6px 10px; border-radius:6px; border:1px solid #ffd84d; background:#3a300acc; color:#ffe9a0; display:none; }
+  #installHelp { position:absolute; inset:0; z-index:30; background:#000b; display:none; align-items:center; justify-content:center; padding:16px; }
+  #installHelp .card { background:#1c1b17; color:#eee; border-radius:12px; padding:18px 18px 14px; max-width:340px; line-height:1.7; font-size:14px; }
+  #installHelp h3 { margin:0 0 8px; font-size:17px; color:#ffd84d; }
+  #installHelp ol { margin:6px 0 10px; padding-left:20px; }
+  #installHelp button { font:inherit; padding:8px 14px; border-radius:8px; border:0; background:#ffd84d; color:#222; width:100%; }
+</style>
+
 <meta name="description" content="用手指滑動打羽球：高遠、殺球、放網、撲球，還有花式打法。">
 <link rel="manifest" href="manifest.webmanifest">
 <!-- 加到主畫面後像 App 一樣全螢幕開（Android 讀 manifest；iPhone／iPad 讀下面這幾行） -->
@@ -84,6 +94,12 @@
     <span><span class="dot" id="d1"></span> <span id="s1">0</span> <span class="who">電腦</span></span>
     <span class="who" id="target"></span>
   </div>
+  <button id="install">安裝</button>
+  <div id="installHelp"><div class="card"><h3>把羽球物語裝到主畫面</h3>
+    <b>iPhone／iPad（Safari）</b><ol><li>按下方的「分享」按鈕（方框加向上箭頭）</li><li>往下找「加入主畫面」，按「新增」</li></ol>
+    <b>Android（Chrome、三星瀏覽器）</b><ol><li>按右上角選單（⋮ 或 ≡）</li><li>選「安裝應用程式」或「加到主畫面」</li></ol>
+    <p style="margin:0 0 10px;opacity:.75;font-size:12px">裝好後從桌面打開就是全螢幕，沒網路也能玩。</p>
+    <button id="installClose">知道了</button></div></div>
   <button id="gear">設定</button>
   <div id="lessonbar" class="layer"><span id="lessontitle"></span><span id="lessoncount"></span><button id="lessonquit">離開</button></div>
   <div id="lessonmsg" class="layer"></div>
@@ -141,7 +157,7 @@
 
   <div id="settings" class="overlay hidden">
     <h2>設定</h2>
-    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.0.1</p>
+    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.0.2</p>
     <div class="row"><span>分數</span><div class="seg" data-k="target"><button data-v="11">11</button><button data-v="15">15</button><button data-v="21">21</button></div></div>
     <div class="row"><span>電腦難度</span><div class="seg" data-k="diff"><button data-v="0">簡單</button><button data-v="1">普通</button><button data-v="2">困難</button><button data-v="3">高手</button></div></div>
     <div class="row"><span>慢動作（練習用）</span><div class="seg" data-k="slow"><button data-v="0">關</button><button data-v="1">開</button></div></div>
@@ -178,7 +194,24 @@
     <button class="btn" id="again">再來一局</button>
   </div>
 </div>
-<script type="module" src="src/main.js?v=101"></script>
+<script type="module" src="src/main.js?v=102"></script>
+<script>
+(() => {
+  const btn = document.getElementById('install'), help = document.getElementById('installHelp');
+  const asApp = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const show = () => { btn.style.display = !asApp() && (window.gameInstall || isIOS || matchMedia('(pointer: coarse)').matches) ? 'block' : 'none'; };
+  btn.addEventListener('click', async () => {
+    const ev = window.gameInstall;
+    if (ev) { ev.prompt(); const r = await ev.userChoice.catch(() => ({})); if (r.outcome === 'accepted') { window.gameInstall = null; btn.style.display = 'none'; } }
+    else help.style.display = 'flex';
+  });
+  document.getElementById('installClose').addEventListener('click', () => { help.style.display = 'none'; });
+  addEventListener('game:installable', show);
+  addEventListener('appinstalled', () => { btn.style.display = 'none'; });
+  show();
+})();
+</script>
 <script>
 // 離線也能玩：註冊 service worker；有新版時重新整理一次就換新
 if ('serviceWorker' in navigator) {
