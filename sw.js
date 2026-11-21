@@ -2,8 +2,8 @@
 // 第一次打開時把遊戲檔案和自己的角色存在手機裡；對手角色選到才下載、下載過就存著。
 // 打開時：有網路就拿最新的（3 秒沒回應或沒網路才用存著的）；角色模型和外部程式庫存過就直接用。
 // 改版：build_site.py 會換 VERSION，舊的存檔就清掉。
-const VERSION = "badminton-1.0.2";
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'models/player.vrm', 'src/character.js?v=102', 'src/footwork.js?v=102', 'src/gesture.js?v=102', 'src/main.js?v=102', 'src/physics.js?v=102', 'src/shots.js?v=102'];
+const VERSION = "badminton-1.0.3";
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'models/player.vrm', 'src/character.js?v=103', 'src/footwork.js?v=103', 'src/gesture.js?v=103', 'src/main.js?v=103', 'src/physics.js?v=103', 'src/shots.js?v=103'];
 const LIBS = ["https://cdn.jsdelivr.net/npm/three@0.160.0/", "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.4.5/"];
 
 self.addEventListener("install", (e) => {

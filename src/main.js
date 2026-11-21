@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=102';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=102';
-import { attachGesture, chargeOf } from './gesture.js?v=102';
-import { loadVRM, Rig } from './character.js?v=102';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=102';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=103';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=103';
+import { attachGesture, chargeOf } from './gesture.js?v=103';
+import { loadVRM, Rig } from './character.js?v=103';
+import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=103';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -106,14 +106,23 @@ scene.add(sun);
   tape.position.set(0, NET_H - 0.02, 0); scene.add(tape);
 })();
 
+// 球拍（真實尺寸，整支再乘 0.9）：握把約 2.6 cm 粗、拍桿 7 mm、拍框寬 8 mm、拍面 22×28 cm、看得到拍線
 function makeRacket() {
   const g = new THREE.Group();
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.2, 8), toon(0x8a2c2c)); handle.position.y = 0.1; g.add(handle);
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.26, 6), toon(0x222222)); shaft.position.y = 0.33; g.add(shaft);
-  const fr = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.009, 6, 28), toon(0x222222)); fr.scale.y = 1.3; fr.position.y = 0.6; g.add(fr);
-  const st = new THREE.Mesh(new THREE.CircleGeometry(0.11, 28),
-    noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, side: THREE.DoubleSide })));
-  st.scale.y = 1.3; st.position.y = 0.6; g.add(st);
+  const mat = c => noOutline(toon(c)); // 不加描邊（描邊會讓細的拍框看起來很粗）
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.0145, 0.0135, 0.2, 10), mat(0x8a2c2c)); grip.position.y = 0.1; g.add(grip);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.012, 10), mat(0x1c1c1c)); cap.position.y = 0.006; g.add(cap);
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0036, 0.0045, 0.27, 6), mat(0x1c1c1c)); shaft.position.y = 0.335; g.add(shaft);
+  const hy = 0.61, a = 0.112, b = 0.142; // 拍面中心、半寬、半長
+  const fr = new THREE.Mesh(new THREE.TorusGeometry(1, 0.0042 / a, 6, 48), mat(0x1c1c1c)); fr.scale.set(a, b, a); fr.position.y = hy; g.add(fr);
+  // T 頭（拍框和拍桿接起來的地方）
+  const throat = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.005, 0.05, 6), mat(0x1c1c1c)); throat.position.y = hy - b - 0.015; g.add(throat);
+  // 拍線：縱橫交錯的細線
+  const pts = [];
+  for (let i = -10; i <= 10; i++) { const x = i / 10.5 * a, h = b * Math.sqrt(Math.max(0, 1 - (x / a) ** 2)); pts.push(x, hy - h, 0, x, hy + h, 0); }
+  for (let j = -12; j <= 12; j++) { const y = j / 12.5 * b, w = a * Math.sqrt(Math.max(0, 1 - (y / b) ** 2)); pts.push(-w, hy + y, 0, w, hy + y, 0); }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xf2f2f2, transparent: true, opacity: 0.75 })));
   return g;
 }
 
@@ -143,14 +152,35 @@ function makePlayerMesh(shirt, shorts) {
   return g;
 }
 
+// 羽毛球（真實尺寸 × 1.5 讓手機看得清楚）：+z＝球頭方向。球頭直徑 2.6 cm；羽毛 16 根、長 6.6 cm、尾端張開 6.4 cm
 function makeShuttleMesh() {
   const g = new THREE.Group();
-  const cork = new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(0xf3ead8));
-  cork.rotation.x = Math.PI / 2; cork.position.z = 0.004; g.add(cork);
-  const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.034, 0.07, 16, 1, true),
-    noOutline(new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide })));
-  skirt.rotation.x = Math.PI / 2; skirt.position.z = -0.035; g.add(skirt);
-  g.scale.setScalar(1.7);
+  const rc = 0.013;
+  const cork = new THREE.Mesh(new THREE.SphereGeometry(rc, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), toon(0xf6f1e6));
+  cork.rotation.x = Math.PI / 2; cork.position.z = 0.0; g.add(cork);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(rc, rc * 0.98, 0.009, 16, 1, true), noOutline(toon(0x2d5fa8))); // 球頭的色帶
+  band.rotation.x = Math.PI / 2; band.position.z = -0.0045; g.add(band);
+  const base = new THREE.Mesh(new THREE.CircleGeometry(rc * 0.98, 16), noOutline(new THREE.MeshLambertMaterial({ color: 0xe8e1d0, side: THREE.DoubleSide })));
+  base.position.z = -0.009; g.add(base);
+  // 16 根羽毛：從球頭邊緣往後張開，每根之間留一點縫
+  const N = 16, z0 = -0.008, z1 = -0.074, r0 = rc * 0.95, r1 = 0.032, pos = [], rib = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2, w0 = (Math.PI * 2 / N) * 0.34, w1 = (Math.PI * 2 / N) * 0.42;
+    const P = (r, ang, z) => [Math.cos(ang) * r, Math.sin(ang) * r, z];
+    const A = P(r0, a - w0, z0), B = P(r0, a + w0, z0), C = P(r1, a + w1, z1), D = P(r1, a - w1, z1), E = P(r1 * 1.02, a, z1 - 0.004); // E：羽毛尾端圓弧的尖
+    pos.push(...A, ...B, ...C, ...A, ...C, ...D, ...D, ...C, ...E);
+    rib.push(...P(r0, a, z0), ...P(r1 * 1.01, a, z1 - 0.003)); // 羽軸
+  }
+  const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); fg.computeVertexNormals();
+  g.add(new THREE.Mesh(fg, noOutline(new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.96 }))));
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rib, 3));
+  g.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xcfcac0 })));
+  // 兩圈綁羽毛的線
+  for (const [z, c] of [[-0.024, 0x6a7f9a], [-0.036, 0x6a7f9a]]) {
+    const t = (z - z0) / (z1 - z0), r = r0 + (r1 - r0) * t;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.0007, 4, 32), noOutline(toon(c))); ring.position.z = z; g.add(ring);
+  }
+  g.scale.setScalar(1.5);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -191,6 +221,7 @@ async function loadOpponent() {
 })();
 
 const shuttleMesh = makeShuttleMesh(); scene.add(shuttleMesh);
+const shuttleTmp = new THREE.Object3D(); // 算羽毛球轉向用
 const shuttle = { p: { x: 0, y: 1, z: 3 }, v: { x: 0, y: 0, z: 0 }, held: true, lastHitter: null, tumble: false, netFault: false, serve: false };
 
 const TRAIL = 30, trailPos = new Float32Array(TRAIL * 3), trailHist = [];
@@ -259,7 +290,7 @@ function setupServe() {
   r.pos = { x: (even ? 1 : -1) * r.side * 1.0, z: r.side * 3.0 };
   for (const a of actors) { a.base = { ...a.pos }; a.plan = null; a.letGo = false; a.vel = { x: 0, z: 0 }; a.stand = null; a.fw = null; }
   s.serveType = s.human && !settings.demo ? 'sserve' : Math.random() < 0.55 ? 'sserve' : 'lserve';
-  Object.assign(shuttle, { held: true, lastHitter: null, tumble: false, netFault: false, serve: false });
+  Object.assign(shuttle, { held: true, lastHitter: null, tumble: false, netFault: false, serve: false, bounces: 0, restT: 0, spin: 0 });
   trailHist.length = 0;
   phaseT = simT + 1.2;
   $('#banner').textContent = '';
@@ -322,7 +353,7 @@ function hit(a, key, o) {
     }
   }
   shuttle.v = { ...res.v };
-  Object.assign(shuttle, { held: false, lastHitter: a, tumble: !!spec.tumble, serve: !!spec.serve, netFault: false });
+  Object.assign(shuttle, { held: false, lastHitter: a, tumble: !!spec.tumble, serve: !!spec.serve, netFault: false, bounces: 0, restT: 0, spin: 0 });
   if (spec.jump) a.recoverUntil = simT + 0.45; // 跳殺落地要時間，回位比較慢
   a.plan = null; a.swingT = simT; a.low = shuttle.p.y < 1.6; a.swingKind = o.fancy || (spec.serve ? (key === 'sserve' || key === 'fserve' ? 'serveB' : 'serveF') : strokeOf(a, shuttle.p));
   a.lastKey = key;
@@ -816,8 +847,8 @@ function updateAnim(a) {
 
 function fixed() {
   simT += DT;
-  if (phase === 'feed') { moveActors(); if (simT >= phaseT) doFeed(); return; }
-  if (phase === 'lessonwait') return;
+  if (phase === 'feed') { floorTick(); moveActors(); if (simT >= phaseT) doFeed(); return; }
+  if (phase === 'lessonwait') { floorTick(); return; }
   if (phase === 'serve') {
     holdShuttle();
     if (auto(actors[server]) && simT >= phaseT) {
@@ -828,7 +859,7 @@ function fixed() {
     return;
   }
   if (phase === 'point' || phase === 'over') {
-    if (shuttle.p.y > 0 && !shuttle.held) { step(shuttle); if (shuttle.p.y < 0) shuttle.p.y = 0; }
+    floorTick();
     moveActors();
     if (phase === 'point' && simT >= phaseT) setupServe();
     return;
@@ -845,7 +876,23 @@ function fixed() {
   if (simT >= (replanAt || 0)) { replanAt = simT + 0.08; for (const a of actors) replanKill(a); }
   for (const a of actors) if (auto(a) && a.plan && simT >= a.plan.t) aiTryHit(a);
   if (pending && simT >= pending.t) { const p = pending; pending = null; humanTryHit(p); }
-  if (shuttle.p.y <= 0) { shuttle.p.y = 0; resolveLanding(); }
+  if (shuttle.p.y <= 0) { shuttle.p.y = 0; resolveLanding(); floorHit(); }
+}
+
+// 羽毛球碰到地板：球頭（軟木）先著地 → 小小彈起來、往前滑一點、翻一下 → 最後側躺（球頭和羽毛邊緣都碰地）
+function floorHit() {
+  const v = shuttle.v, sp = Math.hypot(v.x, v.z);
+  shuttle.lieDir = sp > 0.05 ? { x: v.x / sp, z: v.z / sp } : (shuttle.lieDir || { x: 0, z: -1 });
+  shuttle.bounces = (shuttle.bounces || 0) + 1;
+  if (v.y < -1.5 && shuttle.bounces <= 2) { // 彈起來：軟木有彈性，羽毛很快把速度吃掉
+    v.y = -v.y * (shuttle.bounces === 1 ? 0.3 : 0.18); v.x *= 0.45; v.z *= 0.45;
+    shuttle.p.y = 0.001; shuttle.spin = (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6);
+  } else { shuttle.v = { x: 0, y: 0, z: 0 }; shuttle.restT = simT; shuttle.spin = 0; }
+}
+function floorTick() {
+  if (shuttle.held || shuttle.restT) return;
+  if (shuttle.p.y > 0) { step(shuttle); if (shuttle.p.y <= 0) { shuttle.p.y = 0; floorHit(); } }
+  else if (!shuttle.restT) { shuttle.restT = simT; shuttle.v = { x: 0, y: 0, z: 0 }; }
 }
 
 // ---------------- 介面 ----------------
@@ -1204,9 +1251,21 @@ function render(rdt) {
   }
   const p = shuttle.p;
   shuttleMesh.position.set(p.x, p.y, p.z);
-  if (shuttle.held || Math.hypot(shuttle.v.x, shuttle.v.y, shuttle.v.z) < 0.05) shuttleMesh.lookAt(p.x, p.y - 1, p.z);
-  else shuttleMesh.lookAt(p.x + shuttle.v.x, p.y + shuttle.v.y, p.z + shuttle.v.z);
-  if (shuttle.tumble && !shuttle.held && phase === 'rally') shuttleMesh.rotateX(simT * 30);
+  if (shuttle.restT && !shuttle.held) { // 側躺：球頭朝前、往下壓到地，羽毛尾端翹起約 15°（球頭半徑 2 cm、羽毛尾端碰地）
+    const d = shuttle.lieDir || { x: 0, z: -1 }, k = Math.min(1, (simT - shuttle.restT) / 0.22), tilt = 0.27;
+    shuttleMesh.position.y = 0.02;
+    shuttleTmp.position.copy(shuttleMesh.position); shuttleTmp.lookAt(p.x + d.x * Math.cos(tilt), 0.02 - Math.sin(tilt), p.z + d.z * Math.cos(tilt));
+    shuttleMesh.quaternion.slerp(shuttleTmp.quaternion, k < 1 ? 0.25 : 1);
+  } else if (shuttle.bounces && !shuttle.held) { // 彈跳中：翻滾
+    shuttleTmp.position.copy(shuttleMesh.position); shuttleTmp.lookAt(p.x + shuttle.v.x, p.y + shuttle.v.y, p.z + shuttle.v.z);
+    shuttleTmp.rotateX(simT * (shuttle.spin || 8));
+    shuttleMesh.quaternion.slerp(shuttleTmp.quaternion, 0.35);
+    shuttleMesh.position.y = Math.max(p.y, 0.018);
+  } else {
+    if (shuttle.held || Math.hypot(shuttle.v.x, shuttle.v.y, shuttle.v.z) < 0.05) shuttleMesh.lookAt(p.x, p.y - 1, p.z);
+    else shuttleMesh.lookAt(p.x + shuttle.v.x, p.y + shuttle.v.y, p.z + shuttle.v.z);
+    if (shuttle.tumble && !shuttle.held && phase === 'rally') shuttleMesh.rotateX(simT * 30);
+  }
   if (!shuttle.held) { trailHist.unshift({ ...p }); if (trailHist.length > TRAIL) trailHist.pop(); }
   for (let i = 0; i < TRAIL; i++) {
     const h = trailHist[Math.min(i, trailHist.length - 1)] || p;
