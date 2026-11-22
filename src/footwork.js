@@ -98,6 +98,30 @@ export function planRecover(a, base, tStart, afterLunge, feet) {
   return fw;
 }
 
+// 跳殺之後：空中身體帶著往前（剪刀腳、右腳在前落地），一落地馬上往前衝（殺上網，準備撲對手擋回來的球）
+// fall＝擊球後還要多久落地；target＝衝到哪裡
+export function planJumpFollow(a, target, tStart, fall) {
+  const P = { ...a.pos };
+  const { W, L } = frame(a, P);
+  const rel = L(target.x, target.z);
+  const drift = 0.45; // 空中往前帶的距離
+  const moves = [{ foot: 'R', to: W(0.2, drift + 0.3), body: W(rel.lat * 0.1, drift), dur: fall, lift: 0, yaw: 0, air: true }];
+  const left = { lat: rel.lat * 0.9, fwd: rel.fwd - drift };
+  const dist = Math.hypot(left.lat, left.fwd);
+  if (rel.fwd > drift + 0.3) { // 還要往前：左腳先蹬出去、大步衝
+    const n = Math.max(1, Math.ceil(dist / 0.7));
+    let foot = 'L';
+    for (let i = 1; i <= n; i++) {
+      const f = i / n, b = { lat: rel.lat * 0.1 + left.lat * f, fwd: drift + left.fwd * f };
+      moves.push({ foot, to: W(b.lat + (foot === 'R' ? 0.18 : -0.18), b.fwd + 0.1), body: W(b.lat, b.fwd), dur: 0.17, lift: 0.1, yaw: 0 });
+      foot = foot === 'R' ? 'L' : 'R';
+    }
+  }
+  const fw = schedule(moves, P, tStart, null, null, a.side);
+  if (fw) { fw.recover = false; fw.rush = true; } // 衝刺：不是放鬆的回位
+  return fw;
+}
+
 // 排時間：一步接一步；最後的跨步要在擊球前一瞬間落地；時間不夠就整體加快（最快到 55%）
 // 一步身體最多移 0.7 m（跨步 1 m）；距離太遠就在前面補小碎步（左右腳交替），不讓一步跨太大、看起來像瞬移
 const STEP_CAP = 0.7, LUNGE_CAP = 1.0;
@@ -138,7 +162,7 @@ function schedule(moves, P, tStart, tHit, contact, side = 1, lateStart = false) 
     if (m.lunge) m.body = { x: m.body.x + (m.to.x - m.body.x) * 0.42, z: m.body.z + (m.to.z - m.body.z) * 0.42 };
     else if (m.weight) m.body = { x: m.body.x + (m.to.x - m.body.x) * m.weight, z: m.body.z + (m.to.z - m.body.z) * m.weight }; // 重心壓在這隻腳
     m.stepLen = Math.hypot(m.body.x - from.x, m.body.z - from.z);
-    m.lift = Math.max(m.lift || 0, Math.min(0.17, 0.04 + m.stepLen * 0.15)); // 步子大就抬高（跑步的樣子）
+    if (!m.air) m.lift = Math.max(m.lift || 0, Math.min(0.17, 0.04 + m.stepLen * 0.15)); // 步子大就抬高（跑步的樣子）；空中那一段不算
     m.bodyFrom = from; from = m.body; cur = m.t0 + m.dur;
     if (m.lunge && contact) m.toe = yawOf(contact.x - m.to.x, contact.z - m.to.z);
   });
@@ -158,7 +182,7 @@ export function bodyAt(fw, t) {
 // 跑步時身體的上下起伏：每一步中間身體往上彈（騰空），步子越大彈越高
 export function bobAt(fw, t) {
   for (const m of fw.moves) {
-    if (t >= m.t0 && t <= m.t0 + m.dur) { const u = (t - m.t0) / m.dur; return Math.sin(Math.PI * u) * Math.min(0.07, (m.stepLen || 0) * 0.08); }
+    if (t >= m.t0 && t <= m.t0 + m.dur) { if (m.air) return 0; const u = (t - m.t0) / m.dur; return Math.sin(Math.PI * u) * Math.min(0.07, (m.stepLen || 0) * 0.08); }
   }
   return 0;
 }

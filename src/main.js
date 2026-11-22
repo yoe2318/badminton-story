@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=141';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=141';
-import { attachGesture, chargeOf } from './gesture.js?v=141';
-import { loadVRM, Rig } from './character.js?v=141';
-import { planMove, planRecover, bodyAt, yawAt, bobAt } from './footwork.js?v=141';
-import { buildArena } from './arena.js?v=141';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=142';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=142';
+import { attachGesture, chargeOf } from './gesture.js?v=142';
+import { loadVRM, Rig } from './character.js?v=142';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=142';
+import { buildArena } from './arena.js?v=142';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -490,7 +490,11 @@ function hit(a, key, o) {
   a.base = { x: smartBase ? clamp(-shuttle.p.x * 0.15, -0.4, 0.4) : 0, z: a.side * bz }; a.coolUntil = simT + 0.25;
   // 打完回位：跨步的話先蹬回來；跳殺要等落地
   if (o.fancy === 'dive') { a.lunge = true; a.fw = null; a.recoverUntil = simT + 0.9; a.pendingRecover = simT + 0.9; } // 魚躍：趴 0.9 秒才起來
-  else if (!(lesson && a === cpu)) a.fw = planRecover(a, a.base, simT + (o.fancy ? 0.5 : spec.jump ? 0.4 : a.lunge ? 0.14 : 0.06), a.lunge);
+  else if (spec.jump && !(lesson && a === cpu)) { // 跳殺：空中往前帶、落地馬上衝上網（單打；雙打的殺球員留在後場，下面 doublesPositions 會改掉）
+    a.base = { x: clamp(res.sim.land.x * 0.5, -1.2, 1.2), z: a.side * 2.2 }; // 往殺過去的那一邊上網（對手多半擋直線）
+    a.fw = planJumpFollow(a, a.base, simT, Math.max(0.05, 0.32 - Math.max(0, simT - (a.jumpT ?? simT)))); a.recoverUntil = 0;
+  }
+  else if (!(lesson && a === cpu)) a.fw = planRecover(a, a.base, simT + (o.fancy ? 0.5 : a.lunge ? 0.14 : 0.06), a.lunge);
   if (dbl()) opp = pickReceiver(a, res.sim.pts, spec.serve);
   { const m = mateOf(a); if (m) { m.plan = null; } } // 自己隊友不用再打
   opp.plan = predictContact(res.sim.pts, opp.side, simT, opp.pos, auto(opp) ? dOf(opp).react : HUMAN.react);
