@@ -218,6 +218,48 @@ const DIVE_KEYS = [
   { t: 1.08, p: 0.6, l: 0.0, f: 1, A: 'READY', L: 'RISE' },
   { t: 1.3, p: 0, l: 0, f: 1, A: 'READY', L: 'READY' },
 ];
+// 側撲（羽球最常見，使用者給的影片）：身體還是面向網、往球的那一側整個人倒過去（頭先往球那邊）、
+// 拿拍手伸到底；下面那隻腳彎著擦地、上面那隻腳往後上踢；側身落地、順勢翻到背上、再撐起來站好
+// 以下是往右（正手）撲的版本；往左撲時左右鏡像（mirrorSet）
+const DS = {
+  REACH: { rU: V(-0.55, 0.3, 0.78), rF: V(-0.45, 0.25, 0.86), lU: V(0.5, -0.4, 0.77), lF: V(0.3, 0.1, 0.95) },
+  STRETCH: { rU: V(-0.25, 0.93, 0.27), rF: V(-0.15, 0.96, 0.24), lU: V(-0.15, -0.35, 0.92), lF: V(-0.45, 0.2, 0.87) },
+  BRACE: { rU: V(-0.25, 0.93, 0.27), rF: V(-0.15, 0.96, 0.24), lU: V(-0.25, -0.2, 0.95), lF: V(-0.6, 0.35, 0.72) },
+  TUCK: { rU: V(-0.5, 0.75, 0.43), rF: V(-0.3, 0.9, 0.3), lU: V(0.5, 0.2, 0.84), lF: V(0.3, 0.6, 0.74) },
+  PUSH: { rU: V(-0.4, 0.5, 0.77), rF: V(-0.2, 0.7, 0.68), lU: V(-0.55, -0.55, 0.63), lF: V(-0.6, -0.55, 0.58) },
+  LAUNCH: { rT: V(-0.3, -0.75, 0.6), rS: V(-0.15, -0.97, -0.2), lT: V(0.25, -0.92, -0.3), lS: V(0.15, -0.9, -0.4) },
+  FLY: { rT: V(-0.15, -0.55, 0.82), rS: V(-0.1, -0.97, -0.22), lT: V(0.45, -0.8, -0.4), lS: V(0.4, -0.75, -0.53) }, // 下面（右）腳彎著擦地、上面（左）腳往後上踢
+  ROLL: { rT: V(-0.2, -0.25, 0.95), rS: V(-0.12, -0.95, -0.28), lT: V(0.2, -0.15, 0.97), lS: V(0.12, -0.9, -0.42) },   // 翻到背上：兩膝縮起來
+  SIT: { rT: V(-0.25, -0.35, 0.9), rS: V(-0.12, -0.97, -0.2), lT: V(0.2, -0.5, 0.84), lS: V(0.1, -0.97, -0.2) },
+  RISE: { rT: V(-0.2, -0.55, 0.81), rS: V(-0.1, -0.97, 0.1), lT: V(0.15, -0.85, -0.5), lS: V(0.08, -0.9, -0.43) },
+};
+const mirrorV = v => new THREE.Vector3(-v.x, v.y, v.z);
+const mirrorSet = S => { const o = {}; for (const k in S) { const n = k[0] === 'r' ? 'l' + k.slice(1) : k[0] === 'l' ? 'r' + k.slice(1) : k; o[n] = mirrorV(S[k]); } return o; };
+const DSL = {}; for (const k in DS) DSL[k] = mirrorSet(DS[k]);
+// r：往球那側倒下去的角度；s：沿身體長軸翻（翻到背上）；l、f 同上
+const SIDE_KEYS = [
+  { t: 0, r: 0.3, s: 0, l: -0.1, f: 0.06, A: 'REACH', L: 'LAUNCH' },
+  { t: 0.1, r: 0.95, s: 0, l: 0.26, f: 0.4, A: 'STRETCH', L: 'FLY' },
+  { t: 0.22, r: 1.3, s: 0, l: 0.32, f: 0.78, A: 'STRETCH', L: 'FLY' },
+  { t: 0.32, r: 1.5, s: 0.15, l: 0.13, f: 0.95, A: 'BRACE', L: 'FLY' },
+  { t: 0.46, r: 1.55, s: 1.05, l: 0.15, f: 1.02, A: 'TUCK', L: 'ROLL' },
+  { t: 0.62, r: 1.55, s: 1.25, l: 0.15, f: 1.04, A: 'TUCK', L: 'ROLL' },
+  { t: 0.82, r: 1.45, s: 0.3, l: 0.14, f: 1.04, A: 'BRACE', L: 'SIT' },
+  { t: 1.0, r: 0.85, s: 0, l: 0.2, f: 1.04, A: 'PUSH', L: 'SIT' },
+  { t: 1.15, r: 0.3, s: 0, l: 0.04, f: 1.04, A: 'READY', L: 'RISE' },
+  { t: 1.3, r: 0, s: 0, l: 0, f: 1.04, A: 'READY', L: 'READY' },
+];
+function sideFrame(d, S) {
+  const tt = Math.max(0, d);
+  let i = 0; while (i < SIDE_KEYS.length - 2 && tt > SIDE_KEYS[i + 1].t) i++;
+  const a = SIDE_KEYS[i], b = SIDE_KEYS[i + 1], u = smooth(clampN((tt - a.t) / (b.t - a.t), 0, 1));
+  const lib = S > 0 ? DS : DSL, set = n => (n === 'READY' ? READY : lib[n]);
+  const mixV = (A, B, keys) => { const o = {}; for (const n of keys) o[n] = A[n].clone().lerp(B[n], u).normalize(); return o; };
+  return {
+    side: S, p: 0, r: a.r + (b.r - a.r) * u, s: a.s + (b.s - a.s) * u, l: a.l + (b.l - a.l) * u, f: a.f + (b.f - a.f) * u,
+    arms: mixV(set(a.A), set(b.A), ['rU', 'rF', 'lU', 'lF']), legs: mixV(set(a.L), set(b.L), ['rT', 'rS', 'lT', 'lS']),
+  };
+}
 export const DIVE_LEN = 1.3;
 function diveFrame(d) {
   const tt = Math.max(0, d);
@@ -550,7 +592,7 @@ export class Rig {
     const rootPos = { x: a.pos.x, y: jumpY + hop + (an.bob || 0) - pose.drop * this.scale, z: a.pos.z };
 
     // 魚躍：身體往前倒成水平、往球的方向滑出去，趴一下再起來
-    const dv = a.swingKind === 'dive' && a.dive && d > -0.05 && d < DIVE_LEN ? diveFrame(d) : null;
+    const dv = a.swingKind === 'dive' && a.dive && d > -0.05 && d < DIVE_LEN ? (a.dive.side ? sideFrame(d, a.dive.side) : diveFrame(d)) : null;
     const dive = dv ? 1 : 0;
     if (dv) { // 位置照飛出去的距離算（從起跳點出發，最後停在落地的地方）
       rootPos.x = a.dive.from.x + a.dive.dir.x * a.dive.len * dv.f;
@@ -677,7 +719,8 @@ export class Rig {
     this.root.position.set(rootPos.x, rootPos.y, rootPos.z);
     // 魚躍：整個人往前倒（繞身體左右軸轉）
     const face = this.faceRot > 1 ? -1 : 1;
-    this.root.rotation.set(face * (dv ? dv.p : 0), this.yaw, 0, 'YXZ');
+    this.root.rotation.set(face * (dv ? dv.p : 0), this.yaw, dv && dv.r ? face * dv.side * dv.r : 0, 'YXZ');
+    this.vrm.scene.rotation.y = this.faceRot + (this.v0 ? Math.PI : 0) + (dv && dv.s ? dv.side * dv.s : 0); // 側撲落地後沿身體長軸翻到背上
     this.flipV0(); // 算完換成舊版方向給模型用
     this.vrm.update(dt);
   }

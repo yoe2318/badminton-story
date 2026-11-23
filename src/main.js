@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=162';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=162';
-import { attachGesture, chargeOf } from './gesture.js?v=162';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=162';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=162';
-import { buildArena } from './arena.js?v=162';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=163';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=163';
+import { attachGesture, chargeOf } from './gesture.js?v=163';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=163';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=163';
+import { buildArena } from './arena.js?v=163';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -497,7 +497,9 @@ function hit(a, key, o) {
   if (o.fancy === 'dive') { // 魚躍：朝球的方向低低地飛出去，趴一下、撐起來站好（停在落地的地方，不會回到原地）
     const L = a.lungeAt, yawD = clamp(Math.atan2(-L.lat, Math.max(0.2, L.fwd)), -1.3, 1.3), s = a.side;
     const dir = { x: -Math.sin(yawD) * s, z: -Math.cos(yawD) * s }, len = clamp(Math.hypot(L.lat, L.fwd) - 0.45, 0.6, 1.3);
-    a.dive = { from: { ...a.pos }, dir, len, yaw: yawD, t0: simT };
+    const sideD = Math.abs(L.lat) > Math.max(0.25, L.fwd) * 0.8; // 球在旁邊：側撲（身體面向網、往旁邊倒）；球在正前方：往前撲
+    if (sideD) { const dl = Math.hypot(L.lat, L.fwd) || 1; dir.x = L.lat / dl * s; dir.z = -L.fwd / dl * s; }
+    a.dive = { from: { ...a.pos }, dir, len, yaw: sideD ? clamp(yawD * 0.25, -0.35, 0.35) : yawD, t0: simT, side: sideD ? Math.sign(L.lat) : 0 };
     a.pos = { x: clamp(a.pos.x + dir.x * len, -3.4, 3.4), z: a.pos.z + dir.z * len }; a.vel = { x: 0, z: 0 };
     a.lunge = true; a.fw = null; a.recoverUntil = simT + DIVE_LEN; a.pendingRecover = simT + DIVE_LEN;
   }
