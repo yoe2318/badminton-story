@@ -655,7 +655,8 @@ export class Rig {
       }
       const lunging = (a.fw && a.fw.moves.some(m => m.lunge && t >= m.t0 - 0.05 && t <= m.t0 + m.dur + 0.45)) || (this.lungeHold && t < this.lungeHold);
       const killK = (a.swingKind === 'kill' || a.swingKind === 'bkill') && Math.abs(t - a.swingT) < 0.8; // 撲球：快速一步，不蹲深
-      const tgtDrop = clampN(need, 0, lunging ? (killK ? 0.12 : 0.3) : 0.06), xd = this.xDrop || 0; // 只有跨步才大幅降低（最多 30 公分：前腳大腿接近水平、後腳伸直），平常最多 6 公分
+      const sideK = (a.swingKind === 'side' || a.swingKind === 'bside') && Math.abs(t - a.swingT) < 0.8; // 平抽：側跨一步、身體比較高（影片：中場兩點抽球）
+      const tgtDrop = clampN(need, 0, lunging ? (killK ? 0.12 : sideK ? 0.15 : 0.3) : 0.06), xd = this.xDrop || 0; // 只有跨步才大幅降低（最多 30 公分：前腳大腿接近水平、後腳伸直），平常最多 6 公分
       this.xDrop = xd + (tgtDrop - xd) * Math.min(1, dt * (tgtDrop > xd ? 10 : 6)); // 蹲下跟著跨步的速度、站起來慢
       rootPos.y -= this.xDrop;
       const toeR = this.feet.R.toe ?? th, toeL = this.feet.L.toe ?? th;

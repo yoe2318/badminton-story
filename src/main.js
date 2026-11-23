@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=164';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=164';
-import { attachGesture, chargeOf } from './gesture.js?v=164';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=164';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=164';
-import { buildArena } from './arena.js?v=164';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=170';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=170';
+import { attachGesture, chargeOf } from './gesture.js?v=170';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=170';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=170';
+import { buildArena } from './arena.js?v=170';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -422,6 +422,8 @@ function inBounds(x, z, side, serve, serveX) {
 
 // 回位步子的快慢：打很高的球有時間（走回去），網前、吊球、平抽要馬上回
 const RECOVER_PACE = { clear: 1.4, lift: 1.4, lserve: 1.4, aclear: 1.1, net: 0.85, spin: 0.85, cross: 0.85, slowdrop: 0.85, fastdrop: 0.85, slicedrop: 0.85, block: 0.85, push: 0.85, drive: 0.8, stick: 0.85, kill: 0.85 };
+// 後場頭頂球（高遠、吊、殺）：小跳＋剪刀腳（影片：後場兩點高遠球每一拍都有起跳）
+const rearScissor = p => (p.y >= 2.3 && Math.abs(p.z) > 4.6 ? 0.2 : 0);
 function hit(a, key, o) {
   const spec = SHOTS[key];
   const inTumble = !!shuttle.tumble; // 來球在翻滾（對手放網）：撲的話用刷的
@@ -483,7 +485,7 @@ function hit(a, key, o) {
   if (spec.jump) a.recoverUntil = simT + 0.45; // 跳殺落地要時間，回位比較慢
   a.plan = null; a.swingT = simT; a.low = shuttle.p.y < 1.6; a.swingKind = o.fancy || (spec.serve ? (key === 'sserve' || key === 'fserve' ? 'serveB' : 'serveF') : strokeOf(a, shuttle.p));
   a.lastKey = key;
-  if (!ATTACK_KEYS.has(key)) a.jumpH = 0; // 不是殺球就不跳
+  if (!ATTACK_KEYS.has(key) && !(rearScissor(shuttle.p) && ['clear', 'aclear', 'fastdrop', 'slowdrop', 'slicedrop'].includes(key))) a.jumpH = 0; // 不是殺球就不跳（後場頭頂球的小跳例外）
   a.lunge = !spec.serve && shuttle.p.y < 2.2 && Math.hypot(shuttle.p.x - a.pos.x, shuttle.p.z - a.pos.z) > 0.8;
   a.lungeAt = relOf(a, shuttle.p);
   a.contactP = { x: shuttle.p.x, z: shuttle.p.z };
@@ -653,7 +655,7 @@ function aiPreChoose(a) {
   try { a.preKey = !lesson && Math.random() < D.tactic ? personalize(a, aiTactic(a, D)).key : aiChoose(a); }
   finally { Object.assign(shuttle.p, saved); a.pos.x = savedPos.x; a.pos.z = savedPos.z; }
   if (Math.abs(c.z) < 0.6 && c.y < 0.9 && (a.preKey === 'lift' || a.preKey === 'push')) a.preKey = 'net'; // 貼網低球：放網
-  a.jumpH = a.preKey === 'jumpsmash' ? 0.6 : ATTACK_KEYS.has(a.preKey) ? clamp((c.y - 2.6) * 0.8, 0, 0.4) : 0;
+  a.jumpH = a.preKey === 'jumpsmash' ? 0.6 : Math.max(ATTACK_KEYS.has(a.preKey) ? clamp((c.y - 2.6) * 0.8, 0, 0.4) : 0, rearScissor(c));
   if (a.preKey === 'lift' && ['net', 'bnet', 'under', 'bunder', 'side', 'bside'].includes(a.swingKind)) a.swingKind = a.swingKind[0] === 'b' ? 'blift' : 'lift';
   if (a.preKey === 'kill') { a.swingKind = relOf({ pos: a.stand || a.pos, side: a.side }, c).lat >= -0.15 ? 'kill' : 'bkill'; a.aimP = { x: c.x, y: c.y, z: c.z }; if (c.y > 2.3) { a.jumpH = clamp(c.y - 2.15, 0.12, 0.45); a.jumpRise = 0.2; } }
 }
@@ -706,7 +708,7 @@ function humanSwing(g) {
   // 起跳＝要殺球：先用手勢判斷會打出什麼球，不是殺球就不跳
   const y0 = shuttle.p.y, zone0 = y0 >= TOP_Y ? 'top' : y0 >= 2.2 ? 'high' : y0 >= 1.0 ? 'mid' : 'low';
   let k0 = classify(g, zone0, Math.abs(shuttle.p.z) < 2.6, y0);
-  me.jumpH = ATTACK_KEYS.has(k0) ? clamp((y0 - 2.6) * 0.8, 0, 0.4) : 0;
+  me.jumpH = Math.max(ATTACK_KEYS.has(k0) ? clamp((y0 - 2.6) * 0.8, 0, 0.4) : 0, y0 >= 2.3 && g.dir === 'up' ? rearScissor(shuttle.p) : 0);
   if (k0 === 'jumpsmash') me.jumpH = 0.75; // 跳殺
   const r0 = reachInfo();
   if (k0 === 'kill') me.swingKind = me.lungeAt.lat >= -0.15 ? 'kill' : 'bkill'; // 撲球動作
@@ -1019,7 +1021,7 @@ function updateAnim(a) {
   const killPl = a.plan && a.plan.kind === 'mid' && a.plan.y > 1.55 && Math.abs(a.plan.z) < 2.3;
   an.planKind = an.tPlan !== null && a.stand ? (killPl ? (relOf({ pos: a.stand, side: a.side }, a.plan).lat >= -0.15 ? 'kill' : 'bkill') : strokeOf({ pos: a.stand, side: a.side }, a.plan)) : null;
   const overK = an.planKind === 'over' || an.planKind === 'rth' || an.planKind === 'bover';
-  an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : overK ? 1.2 : 0.48) - an.tPlan) / (overK ? 0.55 : 0.3), 0, 1) : 0; // 撲球早一點舉拍；頭頂球邊退邊側身引拍（影片比對：真人一退就側身舉拍）
+  an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : overK ? 0.8 : 0.48) - an.tPlan) / (overK ? 0.45 : 0.3), 0, 1) : 0; // 撲球早一點舉拍；頭頂球邊退邊側身引拍（影片比對：真人一退就側身舉拍）
   an.relax = (an.relax || 0) + ((a.fw && a.fw.recover && !a.plan ? 1 : 0) - (an.relax || 0)) * 0.08; // 回位時放鬆（慢慢變）
   an.jumpProg = jumpOf(a).prog;
   an.stance = phase === 'serve' ? (a === serverActor ? (a.serveType === 'lserve' ? 'F' : 'B') : 'R') : null;
@@ -1035,7 +1037,7 @@ function updateAnim(a) {
   else if (an.planKind === 'bover' && an.tPlan < 0.35) yaw = 2.3; // 反手頭頂：球過頭頂時才轉身背對網
   else if ((an.planKind === 'over' || an.planKind === 'rth') && an.antic > 0) { // 頭頂：側身（退後場時步法已經側過來的話，不要先轉回正面再轉過去）
     const fy = a.fw && simT < a.fw.end + 0.3 ? (yawAt(a.fw, simT) ?? 0) : 0;
-    yaw = Math.min(-0.85 * an.antic, fy < 0 ? Math.max(fy, -0.95) : 0);
+    yaw = Math.min(-1.0 * an.antic, fy < 0 ? Math.max(fy, -1.15) : 0); // 側身：肩膀對網（影片：幾乎轉 90°）
   }
   else if (swinging && (kind === 'bside' || kind === 'bunder' || kind === 'bnet' || kind === 'blift' || kind === 'bkill')) yaw = 0.8; // 反手：身體轉向左、右肩對著球
   else if (a.fw && yawAt(a.fw, simT) !== null && simT < a.fw.end + 0.3) yaw = yawAt(a.fw, simT); // 照步法轉身
@@ -1054,6 +1056,7 @@ function fixed() {
   simT += DT;
   if (phase === 'feed') { floorTick(); moveActors(); if (simT >= phaseT) doFeed(); return; }
   if (phase === 'lessonwait') { floorTick(); return; }
+  if (phase === 'drill') { moveActors(); if (drill) drillTick(); return; }
   if (phase === 'serve') {
     holdShuttle();
     if (auto(serverActor) && simT >= phaseT) {
@@ -1311,7 +1314,7 @@ attachGesture(swipeCv, {
     if (!pts) { me.charge = 0; me.touching = false; return; } // 手勢被取消
     swipePts = pts.slice(); swipeFade = 1; me.charge = chargeOf(pts, swipeCv.clientHeight);
   },
-  onEnd: g => { me.charge = 0; me.touching = false; if (!settings.demo && phase !== 'over') humanSwing(g); swipeFade = 1; },
+  onEnd: g => { me.charge = 0; me.touching = false; if (drill) { stopDrill(); return; } if (!settings.demo && phase !== 'over') humanSwing(g); swipeFade = 1; },
 });
 function drawSwipe(rdt) {
   const w = swipeCv.clientWidth, h = swipeCv.clientHeight;
@@ -1351,7 +1354,7 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   if (k === 'sound' || k === 'crowd') applySound();
   if (k === 'call' && v) { ensureAudio(); say('報分開啟'); }
 }));
-function restart() { serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
+function restart() { stopDrill(); serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
 $('#gear').onclick = () => { syncSettingsUI(); $('#settings').classList.remove('hidden'); };
 $('#close').onclick = () => $('#settings').classList.add('hidden');
 $('#restart').onclick = () => { restart(); $('#settings').classList.add('hidden'); };
@@ -1501,6 +1504,63 @@ function lessonLanded() {
   }
   phase = 'feed'; phaseT = simT + 1.0;
 }
+// ---------- 步法示範：照影片「14 種必學羽毛球兩點連貫步伐」（https://youtu.be/o4leIIsgEmY）----------
+// 不用球：角色在兩個點之間連續移動＋空揮；用的是比賽同一套步法（footwork.js），所以這裡改好、比賽裡也一起變好
+const DP = (x, z, y, key, jump) => ({ x, z, y, key, jump: !!jump });
+const R_FH = DP(2.0, 5.9, 2.6, 'clear'), R_BH = DP(-2.0, 5.9, 2.6, 'clear'), F_FH = DP(1.9, 1.0, 0.45, 'lift'), F_BH = DP(-1.9, 1.0, 0.45, 'lift');
+const M_FH = DP(2.4, 3.4, 0.6, 'block'), M_BH = DP(-2.4, 3.4, 0.6, 'block');
+const DRILLS = [
+  { t: '前場兩點被動挑球', pts: [F_FH, F_BH], v: 2 },
+  { t: '前場兩點主動放網', pts: [DP(1.8, 0.9, 0.95, 'net'), DP(-1.8, 0.9, 0.95, 'net')], base: { x: 0, z: 2.5 }, v: 12 },
+  { t: '中場兩點主動抽球', pts: [DP(2.3, 3.3, 1.3, 'drive'), DP(-2.3, 3.3, 1.3, 'drive')], v: 22 },
+  { t: '中場兩點被動接殺', pts: [M_FH, M_BH], v: 28 },
+  { t: '正手中前場挑球防守', pts: [M_FH, F_FH], v: 34 },
+  { t: '反手中前場挑球防守', pts: [M_BH, F_BH], v: 42 },
+  { t: '後場兩點直線高遠球', pts: [R_FH, R_BH], base: { x: 0, z: 3.7 }, v: 48 },
+  { t: '後場兩點斜線高遠球', pts: [R_FH, R_BH], base: { x: 0, z: 3.7 }, v: 60 },
+  { t: '正手前後場被動上網', pts: [R_FH, F_FH], v: 70 },
+  { t: '反手前後場被動上網', pts: [R_BH, F_BH], v: 78 },
+  { t: '後場兩點突擊', pts: [DP(1.8, 5.3, 2.9, 'jumpsmash', true), DP(-1.8, 5.3, 2.9, 'jumpsmash', true)], base: { x: 0, z: 3.6 }, v: 88 },
+  { t: '前後場殺上網', pts: [DP(0.9, 5.4, 2.7, 'smash'), DP(0.9, 1.2, 0.95, 'net')], v: 96 },
+  { t: '正手後場高遠球防守', pts: [R_FH, M_FH], v: 104 },
+  { t: '反手後場高遠球防守', pts: [R_BH, M_BH], v: 112 },
+];
+let drill = null;
+function startDrill(i) {
+  hideOverlays(); endLesson();
+  drill = { i, k: 0, nextAt: simT + 0.6, base: DRILLS[i].base || { x: 0, z: 3.3 } };
+  phase = 'drill'; shuttle.held = true; shuttleMesh.visible = false;
+  const a = me; a.pos = { ...drill.base }; a.base = { ...drill.base }; a.fw = null; a.plan = null; a.vel = { x: 0, z: 0 };
+  $('#hint').textContent = `步法示範 ${i + 1}. ${DRILLS[i].t}（點一下畫面結束）`;
+}
+function stopDrill() { if (!drill) return; drill = null; shuttleMesh.visible = true; me.plan = null; phase = 'point'; phaseT = simT + 0.3; setHint(); }
+function drillTick() {
+  const a = me, D = DRILLS[drill.i];
+  if (!a.plan && simT >= drill.nextAt) { // 出發去下一個點
+    const pt = D.pts[drill.k % D.pts.length];
+    const pl = { x: pt.x, y: pt.y, z: pt.z, kind: pt.y >= 2.2 ? 'high' : pt.y >= 1.0 ? 'mid' : 'low' };
+    pl.t = simT; a.stand = standFor(a, { ...pl, t: simT + 9 });
+    pl.t = simT + clamp(0.35 + Math.hypot(a.stand.x - a.pos.x, a.stand.z - a.pos.z) / 3.6, 0.6, 1.6);
+    a.plan = pl; a.letGo = false; a.reactAt = simT; a.splitT = simT - 0.05;
+    a.swingKind = strokeOf({ pos: a.stand, side: a.side }, pl); a.contactP = { x: pl.x, z: pl.z }; a.swingT = pl.t; // 跟電腦一樣：出發時就知道什麼時候、用什麼動作打
+    a.jumpH = pt.jump ? 0.6 : Math.max(SHOTS[pt.key].big ? clamp((pt.y - 2.6) * 0.8, 0, 0.4) : 0, rearScissor(pt)); a.jumpT = pl.t; a.jumpRise = 0.275;
+    planFootwork(a);
+  }
+  if (a.plan && simT >= a.plan.t) { // 到點：空揮（動作跟真的擊球一樣）
+    const pt = D.pts[drill.k % D.pts.length], pl = a.plan;
+    a.plan = null; a.swingT = simT; a.low = pt.y < 1.6; a.lastKey = pt.key;
+    a.swingKind = strokeOf(a, pl);
+    if (pt.key === 'lift' && ['net', 'bnet', 'under', 'bunder', 'side', 'bside'].includes(a.swingKind)) a.swingKind = a.swingKind[0] === 'b' ? 'blift' : 'lift';
+    a.lunge = pt.y < 2.2 && Math.hypot(pl.x - a.pos.x, pl.z - a.pos.z) > 0.8; a.lungeAt = relOf(a, pl); a.contactP = { x: pl.x, z: pl.z };
+    if (!SHOTS[pt.key].big && !rearScissor(pt)) a.jumpH = 0;
+    a.base = { ...drill.base };
+    if (pt.jump) { a.fw = planJumpFollow(a, a.base, simT, 0.32); }
+    else a.fw = planRecover(a, a.base, simT + (a.lunge ? 0.14 : 0.06), a.lunge, undefined, 0.85);
+    drill.k++; drill.nextAt = simT + (pt.jump ? 0.75 : a.lunge ? 0.55 : 0.4); // 回位一部分就出發去另一個點（兩點連貫）
+  }
+}
+window.__drill = i => startDrill(i); window.__drillStop = () => stopDrill();
+
 function openLessonMenu() {
   hideOverlays();
   const box = $('#lessonlist'); box.innerHTML = '';
@@ -1509,6 +1569,14 @@ function openLessonMenu() {
     b.className = 'lessonitem';
     b.innerHTML = `<span>${i + 1}. ${L.t}</span><span class="ok">${doneSet.has(i) ? '完成' : ''}</span>`;
     b.onclick = () => openLessonIntro(i);
+    box.appendChild(b);
+  });
+  const h = document.createElement('div'); h.className = 'drillhead'; h.textContent = '步法示範（看角色做 14 種兩點連貫步伐）'; box.appendChild(h);
+  DRILLS.forEach((D, i) => {
+    const b = document.createElement('button');
+    b.className = 'lessonitem';
+    b.innerHTML = `<span>步法 ${i + 1}. ${D.t}</span><span class="ok"></span>`;
+    b.onclick = () => startDrill(i);
     box.appendChild(b);
   });
   $('#lessons').classList.remove('hidden');
@@ -1680,6 +1748,7 @@ window.__record = (o = {}) => {
   const c2 = cv.getContext('2d');
   for (let i = 0; i < frames; i++) {
     if (i > 0) { let n = Math.round(step / DT); while (n-- > 0) fixed(); }
+    if (o.follow) { const f = o.follow, p = me.pos; window.__camOverride = { pos: [p.x + f[0], f[1], p.z + f[2]], at: [p.x, f[3] ?? 0.9, p.z] }; } // 測試用：鏡頭跟著角色
     render(step);
     const x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
     c2.drawImage(src, x, y, cw, ch);

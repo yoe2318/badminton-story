@@ -71,6 +71,7 @@
   #lessonbar #lessoncount { color:#ffd84d; font-size:18px; font-weight:900; }
   #lessonbar button { font:inherit; font-size:12px; padding:3px 8px; border-radius:6px; border:1px solid #fff6; background:#0006; color:#fff; }
   #lessonmsg { left:0; right:0; top:46px; text-align:center; font-size:15px; font-weight:700; text-shadow:0 1px 3px #000a; }
+  .drillhead { margin:14px 0 4px; font-size:14px; font-weight:700; color:#ffd84d; }
   .lessonitem { display:flex; justify-content:space-between; width:100%; font:inherit; font-size:15px; text-align:left; padding:10px 12px; margin:4px 0; border-radius:8px; border:1px solid #fff3; background:#ffffff0d; color:#fff; }
   .lessonitem .ok { color:#7ee2a8; font-size:13px; }
   .btnrow { display:flex; flex-wrap:wrap; gap:8px; }
@@ -161,7 +162,7 @@
 
   <div id="settings" class="overlay hidden">
     <h2>設定</h2>
-    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.6.4</p>
+    <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.7.0</p>
     <div class="row"><span>模式</span><div class="seg" data-k="mode"><button data-v="1">單打</button><button data-v="2">雙打（你＋電腦隊友）</button></div></div>
     <div class="row"><span>分數</span><div class="seg" data-k="target"><button data-v="11">11</button><button data-v="15">15</button><button data-v="21">21</button></div></div>
     <div class="row"><span>局數</span><div class="seg" data-k="games"><button data-v="1">一局</button><button data-v="3">三局兩勝</button></div></div>
@@ -202,7 +203,7 @@
     <button class="btn" id="again">再來一局</button>
   </div>
 </div>
-<script type="module" src="src/main.js?v=164"></script>
+<script type="module" src="src/main.js?v=170"></script>
 <script>
 (() => {
   const btn = document.getElementById('install'), help = document.getElementById('installHelp');

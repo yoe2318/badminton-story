@@ -55,8 +55,8 @@ export function planMove(a, S, o) {
       const n = Math.max(1, Math.round(dist / 0.65));
       for (let i = 1; i <= n; i++) {
         const f = i / n, half = (i - 0.5) / n;
-        add('R', { lat: rel.lat * f + 0.3, fwd: rel.fwd * f - 0.12 }, i === n ? 1 : half, 0.2, 0.08, -0.9, false, i === n ? 0.3 : 0); // 最後一步重心壓在右腳
-        if (i < n) add('L', { lat: rel.lat * f + 0.02, fwd: rel.fwd * f + 0.2 }, f, 0.16, 0.05, -0.9);
+        add('R', { lat: rel.lat * f + 0.3, fwd: rel.fwd * f - 0.12 }, i === n ? 1 : half, 0.2, 0.08, -1.1, false, i === n ? 0.3 : 0); // 最後一步重心壓在右腳；側身約 63°
+        if (i < n) add('L', { lat: rel.lat * f + 0.02, fwd: rel.fwd * f + 0.2 }, f, 0.16, 0.05, -1.1);
       }
     } else { // 頭頂側（左後場）：右腳先往後蹬、轉身 → 左腳往左後方跨到位，重心壓在左腳
       add('R', { lat: rel.lat * 0.45 + 0.22, fwd: rel.fwd * 0.45 + 0.05 }, 0.45, 0.18, 0.07, -0.6);
