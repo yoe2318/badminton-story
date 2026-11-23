@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=142';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=142';
-import { attachGesture, chargeOf } from './gesture.js?v=142';
-import { loadVRM, Rig } from './character.js?v=142';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=142';
-import { buildArena } from './arena.js?v=142';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=150';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=150';
+import { attachGesture, chargeOf } from './gesture.js?v=150';
+import { loadVRM, Rig } from './character.js?v=150';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=150';
+import { buildArena } from './arena.js?v=150';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1000,7 +1000,8 @@ function updateAnim(a) {
   an.tPlan = a.plan && !a.letGo ? a.plan.t - simT : null;
   const killPl = a.plan && a.plan.kind === 'mid' && a.plan.y > 1.55 && Math.abs(a.plan.z) < 2.3;
   an.planKind = an.tPlan !== null && a.stand ? (killPl ? (relOf({ pos: a.stand, side: a.side }, a.plan).lat >= -0.15 ? 'kill' : 'bkill') : strokeOf({ pos: a.stand, side: a.side }, a.plan)) : null;
-  an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : 0.6) - an.tPlan) / 0.35, 0, 1) : 0; // 撲球：早一點把拍子舉起來
+  const overK = an.planKind === 'over' || an.planKind === 'rth' || an.planKind === 'bover';
+  an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : overK ? 1.2 : 0.6) - an.tPlan) / (overK ? 0.55 : 0.35), 0, 1) : 0; // 撲球早一點舉拍；頭頂球邊退邊側身引拍（影片比對：真人一退就側身舉拍）
   an.relax = (an.relax || 0) + ((a.fw && a.fw.recover && !a.plan ? 1 : 0) - (an.relax || 0)) * 0.08; // 回位時放鬆（慢慢變）
   an.jumpProg = jumpOf(a).prog;
   an.stance = phase === 'serve' ? (a === serverActor ? (a.serveType === 'lserve' ? 'F' : 'B') : 'R') : null;
@@ -1014,7 +1015,10 @@ function updateAnim(a) {
   else if (swinging && kind === 'dive' && a.lungeAt) yaw = clamp(Math.atan2(-a.lungeAt.lat, Math.max(0.2, a.lungeAt.fwd)), -1.3, 1.3); // 魚躍：朝球撲
   else if (swinging && a.lunge && a.lungeAt) yaw = clamp(Math.atan2(-a.lungeAt.lat, Math.max(0.2, a.lungeAt.fwd)), -1.1, 1.1); // 跨步朝向球
   else if (an.planKind === 'bover' && an.tPlan < 0.35) yaw = 2.3; // 反手頭頂：球過頭頂時才轉身背對網
-  else if ((an.planKind === 'over' || an.planKind === 'rth') && an.antic > 0) yaw = -0.85 * an.antic; // 頭頂：側身
+  else if ((an.planKind === 'over' || an.planKind === 'rth') && an.antic > 0) { // 頭頂：側身（退後場時步法已經側過來的話，不要先轉回正面再轉過去）
+    const fy = a.fw && simT < a.fw.end + 0.3 ? (yawAt(a.fw, simT) ?? 0) : 0;
+    yaw = Math.min(-0.85 * an.antic, fy < 0 ? Math.max(fy, -0.95) : 0);
+  }
   else if (swinging && (kind === 'bside' || kind === 'bunder' || kind === 'bnet' || kind === 'blift' || kind === 'bkill')) yaw = 0.8; // 反手：身體轉向左、右肩對著球
   else if (a.fw && yawAt(a.fw, simT) !== null && simT < a.fw.end + 0.3) yaw = yawAt(a.fw, simT); // 照步法轉身
   else if (an.gait === 'back') yaw = -0.6; // 退後場：側身

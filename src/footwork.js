@@ -124,7 +124,7 @@ export function planJumpFollow(a, target, tStart, fall) {
 
 // 排時間：一步接一步；最後的跨步要在擊球前一瞬間落地；時間不夠就整體加快（最快到 55%）
 // 一步身體最多移 0.7 m（跨步 1 m）；距離太遠就在前面補小碎步（左右腳交替），不讓一步跨太大、看起來像瞬移
-const STEP_CAP = 0.7, LUNGE_CAP = 1.0;
+const STEP_CAP = 0.8, LUNGE_CAP = 1.0; // 步子大一點（影片比對：真人大步蹬地）
 function splitSteps(moves, P, side) {
   const out = []; let from = { ...P };
   for (const m of moves) {
