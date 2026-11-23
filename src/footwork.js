@@ -40,7 +40,7 @@ export function planMove(a, S, o) {
     if (dist > 0.12) add(rel.lat >= 0 ? 'R' : 'L', stance(rel.lat >= 0 ? 'R' : 'L', 1), 1, 0.18, 0.05, 0); // 小調整
   } else if (front || (reachLow && !rear)) {
     if (fh) { // 正手網前：（遠的話）左腳並步 → 右腳跨步
-      if (dist > 1.0) add('L', { lat: rel.lat * 0.45 + 0.05, fwd: rel.fwd * 0.45 - 0.12 }, 0.45, 0.2, 0.07, -0.15);
+      if (dist > 1.0) add('L', { lat: Math.min(rel.lat * 0.45 + 0.05, 0.05), fwd: rel.fwd * 0.45 - 0.12 }, 0.45, 0.2, 0.07, -0.15); // 左腳往前並步，不跨到右腳的右邊（會打結）
       add('R', lungeFoot(), 1, 0.27, 0.13, -0.2, !o.kill); // 右腳跨出、落地那一刻擊球（撲球教學：Hit and Land）；高的跳撲不跨
     } else { // 反手網前：以左腳為軸轉身 → 右腳跨過去
       add('L', { lat: -0.28 + rel.lat * 0.2, fwd: 0.08 + rel.fwd * 0.2 }, 0.25, 0.16, 0.05, 0.6);
@@ -63,7 +63,10 @@ export function planMove(a, S, o) {
       add('L', { lat: rel.lat - 0.25, fwd: rel.fwd - 0.12 }, 1, 0.24, 0.1, -0.7, false, 0.3);
     }
   } else if (rel.lat >= 0) { // 正手側邊：（遠的話）左腳並步 → 右腳側跨
-    if (dist > 1.1) add('L', { lat: rel.lat * 0.45 - 0.05, fwd: rel.fwd * 0.45 }, 0.45, 0.18, 0.06, -0.3);
+    if (dist > 1.1) { // 並步：右腳先往右移 → 左腳靠過來（停在右腳左邊，不交叉）→ 右腳再跨出去
+      add('R', { lat: rel.lat * 0.4 + 0.22, fwd: rel.fwd * 0.4 }, 0.4, 0.16, 0.06, -0.3);
+      add('L', { lat: rel.lat * 0.4 - 0.12, fwd: rel.fwd * 0.4 }, 0.45, 0.15, 0.05, -0.3);
+    }
     add('R', o.mid ? lungeFoot() : stance('R', 1), 1, 0.26, 0.1, -0.45, o.mid);
   } else { // 反手側邊：左腳轉 → 右腳交叉跨過去
     add('L', { lat: -0.15 + rel.lat * 0.25, fwd: rel.fwd * 0.25 }, 0.25, 0.16, 0.06, 0.8);
@@ -87,7 +90,8 @@ export function planRecover(a, base, tStart, afterLunge, feet, pace = 1) { // pa
   }
   // 並步：一次約 0.75 公尺，左右交替
   const n = Math.max(1, Math.ceil((dist * (1 - frac)) / 0.75));
-  let foot = afterLunge ? 'L' : 'R'; // 右腳先動：從後場往前回時，後面的右腳先上，不會一直留在後面
+  const sideways = Math.abs(rel.lat) > Math.abs(rel.fwd) * 0.8;
+  let foot = afterLunge ? 'L' : sideways ? (rel.lat < 0 ? 'L' : 'R') : 'R'; // 側向回位：往哪邊移就那邊的腳先動（不交叉）；前後回位：右腳先（後場往前回時後面的右腳先上）
   for (let i = 1; i <= n; i++) {
     const f = frac + ((1 - frac) * i) / n;
     moves.push({ foot, to: W(rel.lat * f + (foot === 'R' ? 0.2 : -0.2), rel.fwd * f + (foot === 'R' ? 0.04 : -0.04)), body: W(rel.lat * f, rel.fwd * f), dur: 0.21 * pace, lift: 0.07, yaw: 0 });

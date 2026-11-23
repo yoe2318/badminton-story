@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=163';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=163';
-import { attachGesture, chargeOf } from './gesture.js?v=163';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=163';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=163';
-import { buildArena } from './arena.js?v=163';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=164';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=164';
+import { attachGesture, chargeOf } from './gesture.js?v=164';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=164';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=164';
+import { buildArena } from './arena.js?v=164';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1025,7 +1025,7 @@ function updateAnim(a) {
   an.stance = phase === 'serve' ? (a === serverActor ? (a.serveType === 'lserve' ? 'F' : 'B') : 'R') : null;
   // 全身轉向
   let yaw = 0;
-  const swinging = Math.abs(simT - a.swingT) < 0.6;
+  const swinging = Math.abs(simT - a.swingT) < 0.6 && !(simT - a.swingT > 0.22 && a.fw && a.fw.recover); // 打完開始回位：身體跟著轉回來（不然回位的腳步對著轉開的身體看起來會交叉）
   const kind = a.swingKind;
   const tgt = a.plan && a.stand ? a.stand : null;
   if (swinging && kind === 'bover') yaw = 2.3; // 反手頭頂：背對網

@@ -230,8 +230,9 @@ const DS = {
   LAUNCH: { rT: V(-0.3, -0.75, 0.6), rS: V(-0.15, -0.97, -0.2), lT: V(0.25, -0.92, -0.3), lS: V(0.15, -0.9, -0.4) },
   FLY: { rT: V(-0.15, -0.55, 0.82), rS: V(-0.1, -0.97, -0.22), lT: V(0.45, -0.8, -0.4), lS: V(0.4, -0.75, -0.53) }, // 下面（右）腳彎著擦地、上面（左）腳往後上踢
   ROLL: { rT: V(-0.2, -0.25, 0.95), rS: V(-0.12, -0.95, -0.28), lT: V(0.2, -0.15, 0.97), lS: V(0.12, -0.9, -0.42) },   // 翻到背上：兩膝縮起來
-  SIT: { rT: V(-0.25, -0.35, 0.9), rS: V(-0.12, -0.97, -0.2), lT: V(0.2, -0.5, 0.84), lS: V(0.1, -0.97, -0.2) },
-  RISE: { rT: V(-0.2, -0.55, 0.81), rS: V(-0.1, -0.97, 0.1), lT: V(0.15, -0.85, -0.5), lS: V(0.08, -0.9, -0.43) },
+  TUCK2: { rT: V(-0.15, -0.1, 0.99), rS: V(-0.1, -0.93, -0.35), lT: V(0.12, -0.05, 0.99), lS: V(0.08, -0.9, -0.43) }, // 兩膝縮到胸前（準備起身）
+  KNEEL1: { rT: V(-0.12, -0.99, 0.05), rS: V(-0.08, -0.12, -0.99), lT: V(0.15, -0.2, 0.97), lS: V(0.1, -0.99, 0.02) },   // 單膝跪：下面（右）膝著地、上面（左）腳踩在前面
+  RISE: { rT: V(-0.15, -0.9, -0.3), rS: V(-0.1, -0.9, -0.42), lT: V(0.15, -0.6, 0.79), lS: V(0.1, -0.99, -0.05) },
 };
 const mirrorV = v => new THREE.Vector3(-v.x, v.y, v.z);
 const mirrorSet = S => { const o = {}; for (const k in S) { const n = k[0] === 'r' ? 'l' + k.slice(1) : k[0] === 'l' ? 'r' + k.slice(1) : k; o[n] = mirrorV(S[k]); } return o; };
@@ -243,10 +244,11 @@ const SIDE_KEYS = [
   { t: 0.22, r: 1.3, s: 0, l: 0.32, f: 0.78, A: 'STRETCH', L: 'FLY' },
   { t: 0.32, r: 1.5, s: 0.15, l: 0.13, f: 0.95, A: 'BRACE', L: 'FLY' },
   { t: 0.46, r: 1.55, s: 1.05, l: 0.15, f: 1.02, A: 'TUCK', L: 'ROLL' },
-  { t: 0.62, r: 1.55, s: 1.25, l: 0.15, f: 1.04, A: 'TUCK', L: 'ROLL' },
-  { t: 0.82, r: 1.45, s: 0.3, l: 0.14, f: 1.04, A: 'BRACE', L: 'SIT' },
-  { t: 1.0, r: 0.85, s: 0, l: 0.2, f: 1.04, A: 'PUSH', L: 'SIT' },
-  { t: 1.15, r: 0.3, s: 0, l: 0.04, f: 1.04, A: 'READY', L: 'RISE' },
+  { t: 0.6, r: 1.55, s: 1.2, l: 0.15, f: 1.04, A: 'TUCK', L: 'ROLL' },
+  { t: 0.75, r: 1.5, s: 0.1, l: 0.13, f: 1.04, A: 'BRACE', L: 'TUCK2' },  // 翻回側躺、膝蓋縮起來
+  { t: 0.9, r: 1.1, s: 0, l: -0.24, f: 1.04, A: 'PUSH', L: 'TUCK2' },    // 下面那隻手撐地、側坐起來
+  { t: 1.04, r: 0.3, s: 0, l: -0.42, f: 1.04, A: 'PUSH', L: 'KNEEL1' },  // 單膝跪、另一腳踩在前面
+  { t: 1.17, r: 0.08, s: 0, l: -0.2, f: 1.04, A: 'READY', L: 'RISE' },  // 踩著前腳站起來
   { t: 1.3, r: 0, s: 0, l: 0, f: 1.04, A: 'READY', L: 'READY' },
 ];
 function sideFrame(d, S) {
@@ -598,6 +600,9 @@ export class Rig {
       rootPos.x = a.dive.from.x + a.dive.dir.x * a.dive.len * dv.f;
       rootPos.z = a.dive.from.z + a.dive.dir.z * a.dive.len * dv.f;
       rootPos.y = dv.l;
+      // 身體是繞腳底倒下去的：倒下時髖部離腳底約一個腿長。把整個人往回挪這段距離，髖部才會停在飛出去的那一點（起身時不會整個人往腳那邊滑回去）
+      const tilt = Math.sin(Math.max(dv.r || 0, dv.p || 0)) * this.hipOff.R.y * (dv.r ? 0.9 : 0.75);
+      rootPos.x -= a.dive.dir.x * tilt; rootPos.z -= a.dive.dir.z * tilt;
       pose = { ...pose, lean: 0, tilt: 0, yaw: 0 };
     }
     if (jumpY > 0.05) { // 空中：上升時微微展腹蓄力，擊球那一下往前收
