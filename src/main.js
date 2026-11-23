@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=150';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=150';
-import { attachGesture, chargeOf } from './gesture.js?v=150';
-import { loadVRM, Rig } from './character.js?v=150';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=150';
-import { buildArena } from './arena.js?v=150';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=151';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=151';
+import { attachGesture, chargeOf } from './gesture.js?v=151';
+import { loadVRM, Rig } from './character.js?v=151';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=151';
+import { buildArena } from './arena.js?v=151';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1001,7 +1001,7 @@ function updateAnim(a) {
   const killPl = a.plan && a.plan.kind === 'mid' && a.plan.y > 1.55 && Math.abs(a.plan.z) < 2.3;
   an.planKind = an.tPlan !== null && a.stand ? (killPl ? (relOf({ pos: a.stand, side: a.side }, a.plan).lat >= -0.15 ? 'kill' : 'bkill') : strokeOf({ pos: a.stand, side: a.side }, a.plan)) : null;
   const overK = an.planKind === 'over' || an.planKind === 'rth' || an.planKind === 'bover';
-  an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : overK ? 1.2 : 0.6) - an.tPlan) / (overK ? 0.55 : 0.35), 0, 1) : 0; // 撲球早一點舉拍；頭頂球邊退邊側身引拍（影片比對：真人一退就側身舉拍）
+  an.antic = an.tPlan !== null && an.tPlan > -0.35 ? clamp(((killPl ? 1.0 : overK ? 1.2 : 0.48) - an.tPlan) / (overK ? 0.55 : 0.3), 0, 1) : 0; // 撲球早一點舉拍；頭頂球邊退邊側身引拍（影片比對：真人一退就側身舉拍）
   an.relax = (an.relax || 0) + ((a.fw && a.fw.recover && !a.plan ? 1 : 0) - (an.relax || 0)) * 0.08; // 回位時放鬆（慢慢變）
   an.jumpProg = jumpOf(a).prog;
   an.stance = phase === 'serve' ? (a === serverActor ? (a.serveType === 'lserve' ? 'F' : 'B') : 'R') : null;

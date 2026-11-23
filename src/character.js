@@ -29,7 +29,7 @@ const DEFENSE = { ...READY, rU: V(-0.35, -0.85, 0.4), rF: V(0.3, 0.3, 0.9), lU: 
 // 網前（可能撲球）：拍子舉高在身前
 const NETUP = { ...READY, rU: V(-0.4, -0.2, 0.9), rF: V(-0.05, 0.85, 0.52), lU: V(0.5, -0.35, 0.8), lF: V(0.2, 0.3, 0.93), lean: 0.22, drop: 0.12 };
 // 移動中：兩手跟著步伐抬高（不是慢跑那樣甩）
-const MOVE_ARMS = { rU: V(-0.5, -0.35, 0.8), rF: V(-0.05, 0.7, 0.72), lU: V(0.65, -0.2, 0.7), lF: V(0.4, 0.25, 0.88) };
+const MOVE_ARMS = { rU: V(-0.45, -0.6, 0.66), rF: V(0.05, 0.72, 0.69), lU: V(0.75, -0.55, 0.37), lF: V(0.45, 0.25, 0.86) }; // 拍子舉在身前、手肘彎；非持拍手彎著在身體旁邊平衡
 // 跨步（右腳在前）
 const LUNGE = {
   rT: V(-0.12, -0.35, 0.93), rS: V(-0.08, -0.97, 0.2),
@@ -63,34 +63,34 @@ const BOVER = {
 };
 // 正手下手（挑球、放網）
 const UNDER = {
-  prep: { ...READY, ...LUNGE, rU: V(-0.6, -0.6, 0.5), rF: V(-0.4, -0.85, 0.3), lU: V(0.6, 0.0, -0.8), lF: V(0.45, 0.05, -0.89), yaw: -0.2 },
+  prep: { ...READY, ...LUNGE, rU: V(-0.55, -0.7, 0.45), rF: V(-0.25, -0.35, 0.9), lU: V(0.6, 0.0, -0.8), lF: V(0.45, 0.05, -0.89), yaw: -0.2 }, // 手肘彎、拍頭靠手腕後扣放低
   hit: { ...READY, ...LUNGE, rU: V(-0.35, -0.65, 0.68), rF: V(-0.15, -0.5, 0.85), lU: V(0.55, 0.08, -0.83), lF: V(0.4, 0.12, -0.91), yaw: 0.05 },
   follow: { ...READY, ...LUNGE, rU: V(-0.25, 0.2, 0.95), rF: V(-0.05, 0.75, 0.65), lU: V(0.5, -0.3, -0.8), lF: V(0.4, -0.4, -0.8), yaw: 0.2 },
 };
 // 反手下手：拍子在身體左前方
 const BUNDER = {
-  prep: { ...READY, ...LUNGE, rU: V(0.35, -0.55, 0.75), rF: V(0.6, -0.6, 0.5), lU: V(0.5, -0.2, -0.8), lF: V(0.4, -0.3, -0.85), yaw: 0.8 },
+  prep: { ...READY, ...LUNGE, rU: V(0.3, -0.65, 0.7), rF: V(0.45, -0.3, 0.84), lU: V(0.55, -0.05, -0.83), lF: V(0.4, 0.0, -0.92), yaw: 0.8 },
   hit: { ...READY, ...LUNGE, rU: V(0.15, -0.55, 0.82), rF: V(0.3, -0.45, 0.85), lU: V(0.5, -0.2, -0.8), lF: V(0.4, -0.3, -0.85), yaw: 0.15 },
   follow: { ...READY, ...LUNGE, rU: V(-0.05, 0.2, 0.98), rF: V(0.05, 0.75, 0.65), lU: V(0.5, -0.3, -0.8), lF: V(0.4, -0.4, -0.8), yaw: 0 },
 };
 // 挑球（下手往上挑）：引拍時手腕後扣、拍頭垂在身後下方 → 從下往上甩 → 收拍舉過頭、停一下
 const LIFT = {
-  prep: { ...READY, ...LUNGE, rU: V(-0.5, -0.55, 0.67), rF: V(-0.35, -0.75, -0.55), lU: V(0.6, 0.0, -0.8), lF: V(0.45, 0.05, -0.89), yaw: -0.3 },
+  prep: { ...READY, ...LUNGE, rU: V(-0.45, -0.75, 0.48), rF: V(-0.3, -0.9, -0.3), lU: V(0.6, 0.0, -0.8), lF: V(0.45, 0.05, -0.89), yaw: -0.3 }, // 手肘彎、拍頭靠手腕放到後下方（精簡）
   hit: { ...READY, ...LUNGE, rU: V(-0.3, -0.6, 0.74), rF: V(-0.12, -0.55, 0.83), lU: V(0.55, 0.08, -0.83), lF: V(0.4, 0.12, -0.91), yaw: 0.05 },
   follow: { ...READY, ...LUNGE, rU: V(-0.15, 0.8, 0.58), rF: V(0.05, 0.97, 0.25), lU: V(0.55, -0.4, -0.73), lF: V(0.4, -0.5, -0.77), yaw: 0.3, lean: (LUNGE.lean ?? 0.3) * 0.6 },
-  prepT: -0.26, hold: 0.36, // 引拍早一點開始；收拍高舉多停一下，看得出是挑球
+  prepT: -0.2, hold: 0.36, // 引拍短；收拍高舉多停一下，看得出是挑球
 };
 const BLIFT = {
-  prep: { ...READY, ...LUNGE, rU: V(0.4, -0.5, 0.77), rF: V(0.55, -0.75, -0.35), lU: V(0.5, -0.2, -0.8), lF: V(0.4, -0.3, -0.85), yaw: 0.9 },
+  prep: { ...READY, ...LUNGE, rU: V(0.35, -0.7, 0.62), rF: V(0.45, -0.85, -0.25), lU: V(0.55, -0.05, -0.83), lF: V(0.4, 0.0, -0.92), yaw: 0.9 },
   hit: { ...READY, ...LUNGE, rU: V(0.15, -0.55, 0.82), rF: V(0.25, -0.5, 0.83), lU: V(0.5, -0.2, -0.8), lF: V(0.4, -0.3, -0.85), yaw: 0.2 },
   follow: { ...READY, ...LUNGE, rU: V(0.1, 0.8, 0.59), rF: V(-0.05, 0.97, 0.25), lU: V(0.5, -0.4, -0.77), lF: V(0.4, -0.5, -0.77), yaw: -0.1, lean: (LUNGE.lean ?? 0.3) * 0.6 },
-  prepT: -0.26, hold: 0.36,
+  prepT: -0.2, hold: 0.36,
 };
 // 撲球：拍子先高舉在身前、手腕後扣 → 手腕往下一壓（短、快）→ 收拍很短停在身前；拿拍腳往前跨
 const KILL = {
-  prep: { ...READY, rU: V(-0.45, 0.45, 0.77), rF: V(-0.1, 0.95, 0.3), lU: V(0.45, 0.05, 0.89), lF: V(0.2, 0.35, 0.92), lean: 0.15, yaw: -0.2, drop: 0.03 },
-  hit: { ...READY, rU: V(-0.3, 0.38, 0.87), rF: V(-0.05, 0.42, 0.91), lU: V(0.5, -0.3, 0.81), lF: V(0.3, -0.2, 0.93), lean: 0.18, yaw: 0.1, drop: 0.03 },
-  follow: { ...READY, rU: V(-0.25, 0.05, 0.97), rF: V(0, -0.3, 0.95), lU: V(0.5, -0.5, 0.71), lF: V(0.3, -0.4, 0.87), lean: 0.2, yaw: 0.15, drop: 0.04 },
+  prep: { ...READY, rU: V(-0.45, 0.45, 0.77), rF: V(-0.1, 0.95, 0.3), lU: V(0.85, 0.05, 0.25), lF: V(0.6, 0.35, 0.72), lean: 0.15, yaw: -0.2, drop: 0.03 },
+  hit: { ...READY, rU: V(-0.3, 0.38, 0.87), rF: V(-0.05, 0.42, 0.91), lU: V(0.85, -0.1, -0.1), lF: V(0.6, 0.1, -0.4), lean: 0.18, yaw: 0.1, drop: 0.03 },
+  follow: { ...READY, rU: V(-0.25, 0.05, 0.97), rF: V(0, -0.3, 0.95), lU: V(0.8, -0.35, 0.1), lF: V(0.55, -0.1, 0.4), lean: 0.2, yaw: 0.15, drop: 0.04 },
   prepT: -0.16,
 };
 // 反手撲球：拍子舉在身體左前方、手肘帶頭 → 反手往下一壓
@@ -113,7 +113,7 @@ const BNET = {
 };
 // 正手側身（平抽、擋網）
 const SIDE = {
-  prep: { ...READY, rU: V(-0.9, -0.1, -0.3), rF: V(-0.35, 0.6, -0.7), yaw: -0.55, drop: 0.14 },
+  prep: { ...READY, rU: V(-0.85, -0.3, 0.1), rF: V(-0.3, 0.85, -0.3), lU: V(0.75, -0.35, 0.45), lF: V(0.5, 0.2, 0.84), yaw: -0.55, drop: 0.14 }, // 手肘彎、拍子在肩旁（不是手臂打直往外伸）
   hit: { ...READY, rU: V(-0.7, 0, 0.7), rF: V(-0.2, 0.3, 0.93), yaw: 0.1, drop: 0.14 },
   follow: { ...READY, rU: V(0.2, 0, 0.97), rF: V(0.6, 0.2, 0.77), yaw: 0.45, drop: 0.12 },
 };
@@ -372,7 +372,7 @@ export class Rig {
     if (a.fw && t <= a.fw.end + 0.12) {
       for (const m of a.fw.moves) if (!m.started && t >= m.t0) {
         m.started = true; this.step(m.foot, m.to.x, m.to.z, m.t0, m.dur, m.lift, m.toe ?? th);
-        if (m.lunge && m.foot === 'R') this.dragBack(m.to, m.body, m.t0, m.dur); // 跨步：後腳往後滑、伸直
+        if (m.lunge && m.foot === 'R') this.dragBack(m.to, m.body, m.t0, m.dur, a.side); // 跨步：後腳往後滑、伸直
       }
       this.lastStep = t;
       return;
@@ -384,7 +384,7 @@ export class Rig {
       const cx = a.contactP.x - p.x, cz = a.contactP.z - p.z, dist = Math.hypot(cx, cz) || 1;
       const reach = clampN(dist - 0.3, netK ? 0.4 : 0.5, a.swingKind === 'kill' || a.swingKind === 'bkill' ? 0.85 : 1.15); // 撲球最後一步大步跨、身體保持高
       this.step('R', p.x + (cx / dist) * reach, p.z + (cz / dist) * reach, t, Math.max(0.08, -0.03 - d), 0.1, Math.atan2(cx, cz));
-      if (reach > 0.6 && !(a.swingKind === 'kill' || a.swingKind === 'bkill')) this.dragBack({ x: p.x + (cx / dist) * reach, z: p.z + (cz / dist) * reach }, p, t, Math.max(0.08, -0.03 - d));
+      if (reach > 0.6 && !(a.swingKind === 'kill' || a.swingKind === 'bkill')) this.dragBack({ x: p.x + (cx / dist) * reach, z: p.z + (cz / dist) * reach }, p, t, Math.max(0.08, -0.03 - d), a.side);
       this.lungeHold = a.swingT + 0.42; // 打完才蹬回來
       this.lungeDist = reach;
     }
@@ -428,8 +428,9 @@ export class Rig {
     }
   }
   // 跨步時後腳（左腳）貼地往後滑：離身體約 0.55 m、在跨步方向的正後方偏左，後腿才會伸直、膝蓋不會跪到地上
-  dragBack(front, body, t0, dur) {
+  dragBack(front, body, t0, dur, side = 1) {
     const F = this.feet.L, dx = front.x - body.x, dz = front.z - body.z, dl = Math.hypot(dx, dz) || 1;
+    if (-dz * side < -0.25 * dl) return; // 往後退的跨步（後場）：不滑，不然兩腳會劈開
     const ux = dx / dl, uz = dz / dl, lx = -uz, lz = ux; // 跨步方向、往左
     const tx = body.x - ux * 0.55 + lx * 0.12, tz = body.z - uz * 0.55 + lz * 0.12;
     if (Math.hypot(F.x - tx, F.z - tz) < 0.12) return;
@@ -503,7 +504,8 @@ export class Rig {
     this.root.rotation.y = this.yaw;
     const th = this.yaw + this.faceRot;
     // 墊步時身體小跳
-    const hop = an.split > 0 && an.split < 1 ? Math.sin(Math.PI * an.split) * 0.06 : 0;
+    let hop = an.split > 0 && an.split < 1 ? Math.sin(Math.PI * an.split) * 0.06 : 0;
+    if (!sp && speed < 0.25 && an.tPlan != null && an.tPlan > 0.3 && !(jumpY > 0.02)) hop += 0.012 * Math.abs(Math.sin(t * 8.5)); // 到位等球：腳下輕輕彈、調整重心（不是定住）
     const rootPos = { x: a.pos.x, y: jumpY + hop + (an.bob || 0) - pose.drop * this.scale, z: a.pos.z };
 
     // 魚躍：身體往前倒成水平、往球的方向滑出去，趴一下再起來
