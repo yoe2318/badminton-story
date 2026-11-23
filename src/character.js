@@ -193,6 +193,45 @@ const RECOVER = { ...READY, rT: V(-0.18, -0.85, 0.48), rS: V(-0.1, -0.97, 0.05),
 const KINDS = { behind: BEHIND, tweener: TWEENER, dive: DIVE, net: NET, bnet: BNET, over: OVER, rth: RTH, bover: BOVER, under: UNDER, bunder: BUNDER, lift: LIFT, blift: BLIFT, kill: KILL, bkill: BKILL, side: SIDE, bside: BSIDE, serveB: SERVEB, serveF: SERVEF };
 const STANCES = { B: SERVE_B, F: SERVE_F, R: RECEIVE };
 
+// ---------- 魚躍救球（照教學影片＋林丹的魚躍）----------
+// 蹬地壓低 → 低低地平飛出去（超人姿勢、拍子伸直往前）→ 雙手彎著先著地緩衝、全身同時貼地 → 趴一下 → 撐起來（手和膝蓋著地）→ 右腳往前踩、站起來
+// t：擊球後幾秒；p：身體往前倒的角度；l：抬高；f：往前飛了全程的幾成；A：手臂、L：腿（身體座標）
+const DV = {
+  REACH: { rU: V(-0.25, 0.15, 0.96), rF: V(-0.15, 0.2, 0.97), lU: V(0.35, 0.2, 0.92), lF: V(0.25, 0.35, 0.9) },
+  SUPER: { rU: V(-0.2, 0.75, 0.63), rF: V(-0.1, 0.85, 0.5), lU: V(0.3, 0.6, 0.74), lF: V(0.25, 0.55, 0.8) },
+  CUSH: { rU: V(-0.45, 0.1, 0.89), rF: V(-0.1, 0.97, 0.2), lU: V(0.45, 0.1, 0.89), lF: V(0.1, 0.97, 0.2) },
+  PUSH: { rU: V(-0.25, -0.32, 0.92), rF: V(-0.22, -0.32, 0.92), lU: V(0.25, -0.32, 0.92), lF: V(0.22, -0.32, 0.92) },
+  LAUNCH: { rT: V(-0.12, -0.7, 0.7), rS: V(-0.1, -0.97, -0.2), lT: V(0.12, -0.95, -0.3), lS: V(0.1, -0.9, -0.43) },
+  FLY: { rT: V(-0.12, -0.99, -0.06), rS: V(-0.1, -0.99, -0.12), lT: V(0.12, -0.99, -0.02), lS: V(0.1, -0.98, -0.18) },
+  KNEEL: { rT: V(-0.12, -0.32, 0.94), rS: V(-0.06, -0.95, -0.32), lT: V(0.12, -0.32, 0.94), lS: V(0.06, -0.95, -0.32) },
+  RISE: { rT: V(-0.15, -0.45, 0.88), rS: V(-0.1, -0.97, 0.15), lT: V(0.12, -0.6, 0.8), lS: V(0.06, -0.9, -0.43) },
+};
+const DIVE_KEYS = [
+  { t: 0, p: 0.35, l: -0.12, f: 0.08, A: 'REACH', L: 'LAUNCH' },
+  { t: 0.1, p: 1.0, l: 0.22, f: 0.4, A: 'SUPER', L: 'FLY' },
+  { t: 0.22, p: 1.42, l: 0.26, f: 0.78, A: 'SUPER', L: 'FLY' },
+  { t: 0.32, p: 1.52, l: 0.1, f: 0.95, A: 'CUSH', L: 'FLY' },
+  { t: 0.42, p: 1.52, l: 0.1, f: 1, A: 'CUSH', L: 'FLY' },
+  { t: 0.72, p: 1.52, l: 0.1, f: 1, A: 'CUSH', L: 'FLY' },
+  { t: 0.9, p: 1.25, l: 0.17, f: 1, A: 'PUSH', L: 'KNEEL' },
+  { t: 1.08, p: 0.6, l: 0.0, f: 1, A: 'READY', L: 'RISE' },
+  { t: 1.3, p: 0, l: 0, f: 1, A: 'READY', L: 'READY' },
+];
+export const DIVE_LEN = 1.3;
+function diveFrame(d) {
+  const tt = Math.max(0, d);
+  let i = 0; while (i < DIVE_KEYS.length - 2 && tt > DIVE_KEYS[i + 1].t) i++;
+  const a = DIVE_KEYS[i], b = DIVE_KEYS[i + 1], u = smooth(clampN((tt - a.t) / (b.t - a.t), 0, 1));
+  const set = n => (n === 'READY' ? READY : DV[n]);
+  const mixV = (A, B, k) => { const o = {}; for (const n in A) o[n] = A[n].clone().lerp(B[n], u).normalize(); return o; };
+  const pick = (src, keys) => { const o = {}; for (const n of keys) o[n] = src[n]; return o; };
+  return {
+    p: a.p + (b.p - a.p) * u, l: a.l + (b.l - a.l) * u, f: a.f + (b.f - a.f) * u,
+    arms: mixV(pick(set(a.A), ['rU', 'rF', 'lU', 'lF']), pick(set(b.A), ['rU', 'rF', 'lU', 'lF'])),
+    legs: mixV(pick(set(a.L), ['rT', 'rS', 'lT', 'lS']), pick(set(b.L), ['rT', 'rS', 'lT', 'lS'])),
+  };
+}
+
 function mixPose(a, b, t) {
   const o = {};
   for (const k in a) {
@@ -510,14 +549,13 @@ export class Rig {
     const rootPos = { x: a.pos.x, y: jumpY + hop + (an.bob || 0) - pose.drop * this.scale, z: a.pos.z };
 
     // 魚躍：身體往前倒成水平、往球的方向滑出去，趴一下再起來
-    let dive = 0;
-    if (a.swingKind === 'dive' && d > -0.05 && d < 1.25) {
-      dive = d < 0.2 ? smooth(clampN((d + 0.05) / 0.25, 0, 1)) : d < 0.85 ? 1 : 1 - smooth(clampN((d - 0.85) / 0.4, 0, 1));
-      if (a.contactP) {
-        const cx = a.contactP.x - a.pos.x, cz = a.contactP.z - a.pos.z, dl = Math.hypot(cx, cz) || 1;
-        rootPos.x += cx / dl * 0.7 * dive; rootPos.z += cz / dl * 0.7 * dive;
-      }
-      rootPos.y += 0.1 * dive; // 繞腳轉過去本來就會貼到地上，稍微抬起讓身體躺在地板上（不會陷進去）
+    const dv = a.swingKind === 'dive' && a.dive && d > -0.05 && d < DIVE_LEN ? diveFrame(d) : null;
+    const dive = dv ? 1 : 0;
+    if (dv) { // 位置照飛出去的距離算（從起跳點出發，最後停在落地的地方）
+      rootPos.x = a.dive.from.x + a.dive.dir.x * a.dive.len * dv.f;
+      rootPos.z = a.dive.from.z + a.dive.dir.z * a.dive.len * dv.f;
+      rootPos.y = dv.l;
+      pose = { ...pose, lean: 0, tilt: 0, yaw: 0 };
     }
     if (jumpY > 0.05) { // 空中：上升時微微展腹蓄力，擊球那一下往前收
       const kj = Math.min(1, jumpY / 0.25), arch = d < -0.03 ? -0.14 : d < 0.12 ? -0.14 + (d + 0.03) / 0.15 * 0.44 : 0.3;
@@ -525,10 +563,10 @@ export class Rig {
     }
     // 腿：在地上用 IK（腳真的踩地）；跳起來時用剪刀腳姿勢
     let legs;
-    if (dive > 0.05) { // 撲倒時腿往後伸直
+    if (dv) { // 魚躍：腿照時間軸（蹬地 → 往後伸直 → 跪起來 → 右腳往前踩）
       this.air = true;
-      legs = { rT: V(-0.12, -0.99, -0.06), rS: V(-0.1, -0.99, -0.12), lT: V(0.12, -0.99, -0.02), lS: V(0.1, -0.98, -0.18) };
-      this.footYaw = { R: 0, L: 0 }; this.footPitch = { R: 0.9, L: 0.9 };
+      legs = dv.legs;
+      this.footYaw = { R: 0, L: 0 }; this.footPitch = { R: 0.6, L: 0.6 };
     } else if (jumpY > 0.05) {
       this.air = true;
       legs = { rT: pose.rT.clone(), rS: pose.rS.clone(), lT: pose.lT.clone(), lS: pose.lS.clone() };
@@ -610,6 +648,7 @@ export class Rig {
       arms.rF.lerp(V(kind === 'kill' ? 0.6 : -0.6, 0.2, 0.78), 0.75 * w).normalize();
       pose = { ...pose, wZ: pose.wZ * (1 - w), tw: (kind === 'kill' ? 0.6 : -0.6) * w };
     }
+    if (dv) arms = dv.arms; // 魚躍：伸手 → 超人 → 彎手緩衝 → 撐地
     this.aimChain(B.rU, B.rF, B.rH, REST_R_ARM, arms.rU, arms.rF, chestQ, false, pose.tw || 0);
     B.rH.rotation.set(0, pose.wY || 0, pose.wZ || 0); // 手腕：扣腕／甩腕
     this.aimChain(B.lU, B.lF, B.lH, REST_L_ARM, arms.lU, arms.lF, chestQ);
@@ -637,7 +676,7 @@ export class Rig {
     this.root.position.set(rootPos.x, rootPos.y, rootPos.z);
     // 魚躍：整個人往前倒（繞身體左右軸轉）
     const face = this.faceRot > 1 ? -1 : 1;
-    this.root.rotation.set(face * 1.25 * dive, this.yaw, 0, 'YXZ');
+    this.root.rotation.set(face * (dv ? dv.p : 0), this.yaw, 0, 'YXZ');
     this.flipV0(); // 算完換成舊版方向給模型用
     this.vrm.update(dt);
   }

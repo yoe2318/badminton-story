@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=160';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=160';
-import { attachGesture, chargeOf } from './gesture.js?v=160';
-import { loadVRM, Rig } from './character.js?v=160';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=160';
-import { buildArena } from './arena.js?v=160';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=161';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=161';
+import { attachGesture, chargeOf } from './gesture.js?v=161';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=161';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=161';
+import { buildArena } from './arena.js?v=161';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -494,7 +494,13 @@ function hit(a, key, o) {
   const bz = !smartBase ? 3.4 : ['net', 'spin', 'cross', 'kill'].includes(key) ? 1.7 : ['smash', 'jumpsmash', 'slicesmash'].includes(key) ? 2.6 : ['block', 'slowdrop', 'slicedrop', 'stick', 'sserve'].includes(key) ? 2.4 : ['lift', 'clear', 'lserve', 'fserve'].includes(key) ? 3.8 : 3.4; // 放網後往前封網，對手回高就能撲
   a.base = { x: smartBase ? clamp(-shuttle.p.x * 0.15, -0.4, 0.4) : 0, z: a.side * bz }; a.coolUntil = simT + 0.25;
   // 打完回位：跨步的話先蹬回來；跳殺要等落地
-  if (o.fancy === 'dive') { a.lunge = true; a.fw = null; a.recoverUntil = simT + 0.9; a.pendingRecover = simT + 0.9; } // 魚躍：趴 0.9 秒才起來
+  if (o.fancy === 'dive') { // 魚躍：朝球的方向低低地飛出去，趴一下、撐起來站好（停在落地的地方，不會回到原地）
+    const L = a.lungeAt, yawD = clamp(Math.atan2(-L.lat, Math.max(0.2, L.fwd)), -1.3, 1.3), s = a.side;
+    const dir = { x: -Math.sin(yawD) * s, z: -Math.cos(yawD) * s }, len = clamp(Math.hypot(L.lat, L.fwd) - 0.45, 0.6, 1.3);
+    a.dive = { from: { ...a.pos }, dir, len, yaw: yawD, t0: simT };
+    a.pos = { x: clamp(a.pos.x + dir.x * len, -3.4, 3.4), z: a.pos.z + dir.z * len }; a.vel = { x: 0, z: 0 };
+    a.lunge = true; a.fw = null; a.recoverUntil = simT + DIVE_LEN; a.pendingRecover = simT + DIVE_LEN;
+  }
   else if (spec.jump && !(lesson && a === cpu)) { // 跳殺：空中往前帶、落地馬上衝上網（單打；雙打的殺球員留在後場，下面 doublesPositions 會改掉）
     a.base = { x: clamp(res.sim.land.x * 0.5, -1.2, 1.2), z: a.side * 2.2 }; // 往殺過去的那一邊上網（對手多半擋直線）
     a.fw = planJumpFollow(a, a.base, simT, Math.max(0.05, 0.32 - Math.max(0, simT - (a.jumpT ?? simT)))); a.recoverUntil = 0;
@@ -1022,7 +1028,7 @@ function updateAnim(a) {
   const tgt = a.plan && a.stand ? a.stand : null;
   if (swinging && kind === 'bover') yaw = 2.3; // 反手頭頂：背對網
   else if (swinging && kind === 'behind') yaw = 0.9; // 背後接球：身體往左轉過去
-  else if (swinging && kind === 'dive' && a.lungeAt) yaw = clamp(Math.atan2(-a.lungeAt.lat, Math.max(0.2, a.lungeAt.fwd)), -1.3, 1.3); // 魚躍：朝球撲
+  else if (kind === 'dive' && a.dive && simT - a.dive.t0 < DIVE_LEN) yaw = a.dive.yaw; // 魚躍：整個過程都朝撲出去的方向（趴著時身體不會轉）
   else if (swinging && a.lunge && a.lungeAt) yaw = clamp(Math.atan2(-a.lungeAt.lat, Math.max(0.2, a.lungeAt.fwd)), -1.1, 1.1); // 跨步朝向球
   else if (an.planKind === 'bover' && an.tPlan < 0.35) yaw = 2.3; // 反手頭頂：球過頭頂時才轉身背對網
   else if ((an.planKind === 'over' || an.planKind === 'rth') && an.antic > 0) { // 頭頂：側身（退後場時步法已經側過來的話，不要先轉回正面再轉過去）
@@ -1658,7 +1664,7 @@ window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來�
 };
 window.__testHit = (key, o, at) => { if (at) { Object.assign(shuttle.p, at); cpu.pos.x = at.x; cpu.pos.z = at.z - 0.4; } shuttle.held = false; hit(cpu, key, o || {}); }; // 測試用：讓電腦打指定的球
 window.__serveMe = even => { scores[0] = even ? 0 : 1; scores[1] = 0; server = 0; serverActor = me; setupServe(); }; // 測試用：輪到我在右區（雙數）或左區發球
-window.__testMeHit = (key, o, at) => { Object.assign(shuttle.p, at); me.pos.x = at.x; me.pos.z = at.z + 0.4; shuttle.held = false; phase = 'rally'; hit(me, key, o || {}); const s = simulate({ ...shuttle.p }, { ...shuttle.v }); return s.land; }; // 測試用：玩家打指定的球，回傳落點
+window.__testMeHit = (key, o, at, mp) => { Object.assign(shuttle.p, at); me.pos.x = mp ? mp.x : at.x; me.pos.z = mp ? mp.z : at.z + 0.4; me.lungeAt = relOf(me, at); shuttle.held = false; phase = 'rally'; hit(me, key, o || {}); const s = simulate({ ...shuttle.p }, { ...shuttle.v }); return s.land; }; // 測試用：玩家打指定的球，回傳落點
 window.__game = { settings, scores, games, me, cpu, mate, cpu2, actors, shuttle, get serverActor() { return serverActor; }, get receiverActor() { return receiverActor; }, get phase() { return phase; }, get simT() { return simT; } };
 
 // 測試用：把動作錄成連續格（一張圖排成格子），方便和真人影片逐格比對
