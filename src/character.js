@@ -88,16 +88,16 @@ const BLIFT = {
 };
 // 撲球：拍子先高舉在身前、手腕後扣 → 手腕往下一壓（短、快）→ 收拍很短停在身前；拿拍腳往前跨
 const KILL = {
-  prep: { ...READY, rU: V(-0.45, 0.45, 0.77), rF: V(-0.1, 0.95, 0.3), lU: V(0.85, 0.05, 0.25), lF: V(0.6, 0.35, 0.72), lean: 0.15, yaw: -0.2, drop: 0.03 },
-  hit: { ...READY, rU: V(-0.3, 0.38, 0.87), rF: V(-0.05, 0.42, 0.91), lU: V(0.85, -0.1, -0.1), lF: V(0.6, 0.1, -0.4), lean: 0.18, yaw: 0.1, drop: 0.03 },
-  follow: { ...READY, rU: V(-0.25, 0.05, 0.97), rF: V(0, -0.3, 0.95), lU: V(0.8, -0.35, 0.1), lF: V(0.55, -0.1, 0.4), lean: 0.2, yaw: 0.15, drop: 0.04 },
+  prep: { ...READY, rU: V(-0.45, 0.45, 0.77), rF: V(-0.1, 0.95, 0.3), lU: V(0.8, 0.0, -0.6), lF: V(0.55, 0.15, -0.82), lean: 0.15, yaw: -0.2, drop: 0.03 },
+  hit: { ...READY, rU: V(-0.3, 0.38, 0.87), rF: V(-0.05, 0.42, 0.91), lU: V(0.75, -0.05, -0.66), lF: V(0.5, 0.05, -0.86), lean: 0.18, yaw: 0.1, drop: 0.03 },
+  follow: { ...READY, rU: V(-0.25, 0.05, 0.97), rF: V(0, -0.3, 0.95), lU: V(0.75, -0.3, -0.58), lF: V(0.5, -0.1, -0.86), lean: 0.2, yaw: 0.15, drop: 0.04 },
   prepT: -0.16,
 };
 // 反手撲球：拍子舉在身體左前方、手肘帶頭 → 反手往下一壓
 const BKILL = {
-  prep: { ...READY, rU: V(0.35, 0.45, 0.82), rF: V(0.5, 0.75, 0.43), lU: V(0.55, -0.55, 0.63), lF: V(0.35, -0.45, 0.82), lean: 0.15, yaw: 0.55, drop: 0.03 },
-  hit: { ...READY, rU: V(0.15, 0.38, 0.91), rF: V(0.15, 0.38, 0.91), lU: V(0.55, -0.6, 0.58), lF: V(0.35, -0.5, 0.79), lean: 0.18, yaw: 0.2, drop: 0.03 },
-  follow: { ...READY, rU: V(0.05, 0.05, 0.99), rF: V(-0.1, -0.25, 0.96), lU: V(0.55, -0.65, 0.52), lF: V(0.35, -0.55, 0.76), lean: 0.2, yaw: 0.1, drop: 0.04 },
+  prep: { ...READY, rU: V(0.35, 0.45, 0.82), rF: V(0.5, 0.75, 0.43), lU: V(0.6, -0.45, -0.66), lF: V(0.4, -0.3, -0.87), lean: 0.15, yaw: 0.55, drop: 0.03 },
+  hit: { ...READY, rU: V(0.15, 0.38, 0.91), rF: V(0.15, 0.38, 0.91), lU: V(0.6, -0.45, -0.66), lF: V(0.4, -0.3, -0.87), lean: 0.18, yaw: 0.2, drop: 0.03 },
+  follow: { ...READY, rU: V(0.05, 0.05, 0.99), rF: V(-0.1, -0.25, 0.96), lU: V(0.6, -0.5, -0.62), lF: V(0.4, -0.35, -0.85), lean: 0.2, yaw: 0.1, drop: 0.04 },
   prepT: -0.16,
 };
 // 網前（放網、搓球、勾對角）：拿拍手伸到身前、拍面接近水平、動作很小；另一隻手往後平衡
@@ -170,8 +170,8 @@ const WRIST = {
   BOVER: [[0.7, 0.6], [0, 0], [-0.6, -0.6]],
   UNDER: [[-0.7, -0.3], [0, 0.2], [0.5, 0.6]],
   LIFT: [[-1.1, -0.5], [0, 0.25], [0.9, 0.8]],
-  KILL: [[-0.95, -0.3], [0.6, 0.3], [0.95, 0.5]],
-  BKILL: [[0.85, 0.5], [-0.5, 0], [-0.85, -0.3]],
+  KILL: [[-0.4, -0.2], [0.6, 0.3], [0.95, 0.5]],   // 撲球準備：手腕只微扣（拍頭朝上在身前）
+  BKILL: [[0.4, 0.25], [-0.5, 0], [-0.85, -0.3]],
   BLIFT: [[0.9, 0.6], [0, 0], [-0.8, -0.6]],
   BUNDER: [[0.5, 0.4], [0, 0], [-0.4, -0.3]],
   SIDE: [[-0.85, -0.4], [0, 0.25], [0.6, 0.75]],
@@ -266,6 +266,7 @@ const rotY = (x, z, th) => ({ x: x * Math.cos(th) + z * Math.sin(th), z: -x * Ma
 const FEET = {
   base: { R: [0.27, 0.08], L: [-0.27, -0.06] }, // 比肩寬（影片比對）
   B: { R: [0.17, 0.3], L: [-0.17, -0.22] },   // 反手發短球：右腳在前
+  net: { R: [0.24, 0.24], L: [-0.24, -0.2] },  // 打完網前球／吊球：右腳在前（準備上網）
   F: { R: [0.22, -0.25], L: [-0.15, 0.25] },  // 正手發高遠：左腳在前
   R: { R: [0.2, -0.22], L: [-0.18, 0.3] },    // 接發球：左腳在前
 };
@@ -335,7 +336,7 @@ export class Rig {
   }
   updateFeet(a, t, an, th, sp, d) {
     const vel = a.vel || { x: 0, z: 0 }, p = a.pos;
-    const set = FEET[an.stance] || FEET.base;
+    const set = FEET[an.stance] || (an.footSet && FEET[an.footSet]) || FEET.base;
     const wide = 1 + 0.4 * (an.alert || 0);
     const rv = { x: -Math.cos(th), z: Math.sin(th) }, fv = { x: Math.sin(th), z: Math.cos(th) };
     const W = (f, w = wide, ahead = 0.26) => {
@@ -579,6 +580,8 @@ export class Rig {
       const vl = Math.hypot(a.vel?.x || 0, a.vel?.z || 0);
       const behind = f => { const F = this.feet[f]; if (F.sw || vl < 0.8) return 0; return -((F.x - a.pos.x) * a.vel.x + (F.z - a.pos.z) * a.vel.z) / vl; };
       this.footPitch = { R: clampN((behind('R') - 0.1) * 1.6, 0, 0.7), L: clampN((behind('L') - 0.1) * 1.6, 0, 0.7) };
+      if (!an.stance && !this.feet.R.sw) this.footPitch.R = Math.max(this.footPitch.R, lunging ? 0 : 0.12); // 墊腳尖：腳跟微微離地（跨步的前腳腳跟著地）
+      if (!an.stance && !this.feet.L.sw) this.footPitch.L = Math.max(this.footPitch.L, lunging ? 0.6 : 0.12); // 跨步的後腳：腳跟抬起、腳尖內側拖地
     }
 
     const B = this.b;
@@ -598,9 +601,14 @@ export class Rig {
       const dir = new THREE.Vector3(a.aimP.x - sh.x, a.aimP.y - sh.y, a.aimP.z - sh.z);
       const sq = new THREE.Quaternion(); this.root.getWorldQuaternion(sq); sq.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.faceRot)); // 身體座標（不含舊版模型多轉的 180°）
       dir.applyQuaternion(sq.invert()).normalize(); // 換成身體座標
-      const up = dir.clone().add(new THREE.Vector3(0, -0.18, 0)).normalize(); // 手肘微彎
+      const up = dir.clone().add(new THREE.Vector3(0, -0.07, 0)).normalize(); // 手臂幾乎伸直（盡早在身前最遠的點擊球）
       arms.rU.lerp(up, w).normalize(); arms.rF.lerp(dir, w).normalize();
       pose = { ...pose, wZ: pose.wZ * (1 - w) + (kind === 'kill' ? 0.15 : -0.15) * w, tw: pose.tw * (1 - w) };
+    }
+    if ((kind === 'kill' || kind === 'bkill') && a.killBrush && d > -0.03 && d < 0.3) { // 刷撲：往側邊掃（不是往下壓）
+      const w = smooth(clampN((d + 0.03) / 0.12, 0, 1)) * (d > 0.18 ? 1 - (d - 0.18) / 0.12 : 1);
+      arms.rF.lerp(V(kind === 'kill' ? 0.6 : -0.6, 0.2, 0.78), 0.75 * w).normalize();
+      pose = { ...pose, wZ: pose.wZ * (1 - w), tw: (kind === 'kill' ? 0.6 : -0.6) * w };
     }
     this.aimChain(B.rU, B.rF, B.rH, REST_R_ARM, arms.rU, arms.rF, chestQ, false, pose.tw || 0);
     B.rH.rotation.set(0, pose.wY || 0, pose.wZ || 0); // 手腕：扣腕／甩腕

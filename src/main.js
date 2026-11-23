@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=151';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=151';
-import { attachGesture, chargeOf } from './gesture.js?v=151';
-import { loadVRM, Rig } from './character.js?v=151';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=151';
-import { buildArena } from './arena.js?v=151';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=160';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=160';
+import { attachGesture, chargeOf } from './gesture.js?v=160';
+import { loadVRM, Rig } from './character.js?v=160';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=160';
+import { buildArena } from './arena.js?v=160';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -420,8 +420,11 @@ function inBounds(x, z, side, serve, serveX) {
   return Math.abs(z) >= COURT.shortLine && Math.abs(z) <= serveLong() && (serveX === undefined || x * Math.sign(serveX || 1) <= 0.02);
 }
 
+// 回位步子的快慢：打很高的球有時間（走回去），網前、吊球、平抽要馬上回
+const RECOVER_PACE = { clear: 1.4, lift: 1.4, lserve: 1.4, aclear: 1.1, net: 0.85, spin: 0.85, cross: 0.85, slowdrop: 0.85, fastdrop: 0.85, slicedrop: 0.85, block: 0.85, push: 0.85, drive: 0.8, stick: 0.85, kill: 0.85 };
 function hit(a, key, o) {
   const spec = SHOTS[key];
+  const inTumble = !!shuttle.tumble; // 來球在翻滾（對手放網）：撲的話用刷的
   let opp = other(a);
   let depth = spec.depth[0] + (spec.depth[1] - spec.depth[0]) * (o.depthFrac ?? 0.5);
   let tx = o.tx ?? clamp(o.aimX ?? 0, -1, 1) * 2.2;
@@ -445,6 +448,7 @@ function hit(a, key, o) {
   const tired = tiredOf(a);
   let power = (o.power ?? 0.6) * (o.quality === 'poor' ? 0.8 : o.quality === 'good' ? 0.93 : 1) * (o.backhand ? 0.75 : 1) * (1 - 0.18 * tired);
   if (spec.big && key !== 'kill' && !spec.jump && o.y !== undefined) power *= clamp((o.y - 2.0) / 1.0, 0.6, 1); // 擊球點越高殺越快
+  if (key === 'kill' && inTumble) power *= 0.88; // 刷撲：從側面刷過羽毛，力量小一點（但比較不會掛網）
   let sp2 = spec;
   if (spec.tight && !spec.serve) sp2 = { ...spec, margin: { perfect: 0.05, good: 0.2, poor: 0.4 }[o.quality || 'good'] }; // 小球貼不貼網看擊球品質：不夠好就冒高，對手可以搶網
   if (key === 'lift') { // 挑球：越遠角度越低，最高點大約固定 4.3 m（不會越挑越高）
@@ -485,6 +489,7 @@ function hit(a, key, o) {
   a.contactP = { x: shuttle.p.x, z: shuttle.p.z };
   if (key === 'lift' && ['net', 'bnet', 'under', 'bunder', 'side', 'bside'].includes(a.swingKind)) a.swingKind = a.swingKind[0] === 'b' ? 'blift' : 'lift'; // 挑球：專用動作（下手往上甩、收拍舉過頭）
   if (key === 'kill' && !o.fancy) { a.swingKind = relOf(a, shuttle.p).lat >= -0.15 ? 'kill' : 'bkill'; a.aimP = { ...shuttle.p }; } // 撲球：專用動作、手臂對準球
+  a.killBrush = key === 'kill' && inTumble; // 刷撲
   const smartBase = !lesson && (!auto(a) || dOf(a).tactic > 0);
   const bz = !smartBase ? 3.4 : ['net', 'spin', 'cross', 'kill'].includes(key) ? 1.7 : ['smash', 'jumpsmash', 'slicesmash'].includes(key) ? 2.6 : ['block', 'slowdrop', 'slicedrop', 'stick', 'sserve'].includes(key) ? 2.4 : ['lift', 'clear', 'lserve', 'fserve'].includes(key) ? 3.8 : 3.4; // 放網後往前封網，對手回高就能撲
   a.base = { x: smartBase ? clamp(-shuttle.p.x * 0.15, -0.4, 0.4) : 0, z: a.side * bz }; a.coolUntil = simT + 0.25;
@@ -494,12 +499,12 @@ function hit(a, key, o) {
     a.base = { x: clamp(res.sim.land.x * 0.5, -1.2, 1.2), z: a.side * 2.2 }; // 往殺過去的那一邊上網（對手多半擋直線）
     a.fw = planJumpFollow(a, a.base, simT, Math.max(0.05, 0.32 - Math.max(0, simT - (a.jumpT ?? simT)))); a.recoverUntil = 0;
   }
-  else if (!(lesson && a === cpu)) a.fw = planRecover(a, a.base, simT + (o.fancy ? 0.5 : a.lunge ? 0.14 : 0.06), a.lunge);
+  else if (!(lesson && a === cpu)) a.fw = planRecover(a, a.base, simT + (o.fancy ? 0.5 : a.lunge ? 0.14 : 0.06), a.lunge, undefined, RECOVER_PACE[key] || 1); // 回位快慢看剛打的球（李宗偉：高球走回去、網前快回）
   if (dbl()) opp = pickReceiver(a, res.sim.pts, spec.serve);
   { const m = mateOf(a); if (m) { m.plan = null; } } // 自己隊友不用再打
   opp.plan = predictContact(res.sim.pts, opp.side, simT, opp.pos, auto(opp) ? dOf(opp).react : HUMAN.react);
   opp.letGo = false;
-  opp.stand = standFor(opp, opp.plan); opp.splitT = simT;
+  opp.stand = standFor(opp, opp.plan); if (simT - (opp.splitT ?? -9) > 0.4) opp.splitT = simT; // 已經提早墊步就不再跳一次
   staminaHit(a, key, o);
   if (!auto(opp)) opp.reactAt = simT + HUMAN.react + (o.hold ? 0.15 : 0) + 0.1 * tiredOf(opp); // 對手停頓假動作：慢一拍；累了也慢
   if (lesson && opp === cpu) { opp.plan = null; opp.letGo = true; }
@@ -995,7 +1000,12 @@ function updateAnim(a) {
   an.speed = sp; an.fwdV = fwdV; an.latV = latV;
   an.gait = sp < 0.4 ? 'idle' : fwdV < -Math.abs(latV) * 0.8 ? 'back' : Math.abs(latV) > Math.abs(fwdV) ? 'chasse' : 'run';
   an.latDir = latV >= 0 ? 1 : -1;
+  { // 分腿墊步：對手快打到球時（約 0.16 秒前）先跳起來，擊球那一刻落地
+    const hitter = oppsOf(a).find(b => b.plan && !b.letGo && shuttle.lastHitter && shuttle.lastHitter.side === a.side && !shuttle.held);
+    if (hitter && phase === 'rally' && simT >= hitter.plan.t - 0.16 && a.splitFor !== hitter.plan.t) { a.splitFor = hitter.plan.t; a.splitT = simT; }
+  }
   an.split = (simT - a.splitT) / 0.22;
+  an.footSet = !a.plan && ['net', 'spin', 'cross', 'slowdrop', 'fastdrop', 'slicedrop', 'block', 'kill', 'push', 'stick'].includes(a.lastKey) && Math.abs(a.pos.z) < 3.4 ? 'net' : null; // 打完網前／吊球：右腳在前
   // 離擊球還有多久：0.9 秒前開始準備、0.4 秒前準備到位，之後直接接揮拍
   an.tPlan = a.plan && !a.letGo ? a.plan.t - simT : null;
   const killPl = a.plan && a.plan.kind === 'mid' && a.plan.y > 1.55 && Math.abs(a.plan.z) < 2.3;

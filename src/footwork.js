@@ -73,7 +73,7 @@ export function planMove(a, S, o) {
 }
 
 // 回位：跨步後右腳先蹬回，再用並步回到中間
-export function planRecover(a, base, tStart, afterLunge, feet) {
+export function planRecover(a, base, tStart, afterLunge, feet, pace = 1) { // pace：步子快慢（>1 走回去、<1 快速回位）
   const P = { ...a.pos };
   const { W, L } = frame(a, P);
   const rel = L(base.x, base.z);
@@ -90,7 +90,7 @@ export function planRecover(a, base, tStart, afterLunge, feet) {
   let foot = afterLunge ? 'L' : 'R'; // 右腳先動：從後場往前回時，後面的右腳先上，不會一直留在後面
   for (let i = 1; i <= n; i++) {
     const f = frac + ((1 - frac) * i) / n;
-    moves.push({ foot, to: W(rel.lat * f + (foot === 'R' ? 0.2 : -0.2), rel.fwd * f + (foot === 'R' ? 0.04 : -0.04)), body: W(rel.lat * f, rel.fwd * f), dur: 0.21, lift: 0.07, yaw: 0 });
+    moves.push({ foot, to: W(rel.lat * f + (foot === 'R' ? 0.2 : -0.2), rel.fwd * f + (foot === 'R' ? 0.04 : -0.04)), body: W(rel.lat * f, rel.fwd * f), dur: 0.21 * pace, lift: 0.07, yaw: 0 });
     foot = foot === 'R' ? 'L' : 'R';
   }
   const fw = schedule(moves, P, tStart, null, null, a.side);
