@@ -17,7 +17,7 @@ const READY = { // 影片比對（2026-11-23）：拍子舉在胸前、拍頭朝
   lU: V(0.7, -0.5, 0.5), lF: V(0.45, 0.2, 0.87),
   rT: V(-0.22, -0.9, 0.35), rS: V(-0.12, -0.95, -0.25),
   lT: V(0.22, -0.92, 0.2), lS: V(0.12, -0.95, -0.28),
-  lean: 0.2, yaw: 0, tilt: 0, drop: 0.13, wZ: -0.15, wY: 0, tw: 0,
+  lean: 0.2, yaw: 0, tilt: 0, drop: 0.13, wZ: -0.15, wY: 0, tw: 0.8, ltw: 0.6, // tw 0.8：握手式握拍、拍子直立拍頭朝上（不是手背朝下、拍子平放）；ltw：非持拍手手心朝內
 };
 // 回位走路：上身直、放鬆，拍子垂在身體旁邊
 const RELAX = { ...READY, rU: V(-0.3, -0.85, 0.42), rF: V(0.15, 0.2, 0.97), lU: V(0.55, -0.7, 0.45), lF: V(0.35, -0.05, 0.94), lean: 0.12, drop: 0.07 };
@@ -126,11 +126,11 @@ const BSIDE = {
 // 發球站姿
 const SERVE_B = { // 反手發短球：右腳在前，拍子橫在身體前方，左手拿球在拍前
   ...READY, rT: V(-0.15, -0.88, 0.45), rS: V(-0.1, -0.97, -0.1), lT: V(0.18, -0.95, -0.25), lS: V(0.1, -0.95, -0.3),
-  rU: V(-0.1, -0.75, 0.65), rF: V(0.55, -0.3, 0.78), lU: V(0.3, -0.45, 0.85), lF: V(0, 0.15, 0.99), lean: 0.22, drop: 0.06,
+  rU: V(-0.1, -0.75, 0.65), rF: V(0.55, -0.3, 0.78), lU: V(0.3, -0.45, 0.85), lF: V(0, 0.15, 0.99), lean: 0.22, drop: 0.06, tw: 0, ltw: 0,
 };
 const SERVE_F = { // 正手發高遠：左腳在前，拍子往後拉
   ...READY, lT: V(0.15, -0.88, 0.45), lS: V(0.1, -0.97, -0.1), rT: V(-0.2, -0.92, -0.3), rS: V(-0.1, -0.95, -0.3),
-  rU: V(-0.6, -0.45, -0.6), rF: V(-0.4, 0.3, -0.85), lU: V(0.3, -0.2, 0.93), lF: V(0.1, 0, 1), lean: 0.1, yaw: -0.4, drop: 0.04,
+  rU: V(-0.6, -0.45, -0.6), rF: V(-0.4, 0.3, -0.85), lU: V(0.3, -0.2, 0.93), lF: V(0.1, 0, 1), lean: 0.1, yaw: -0.4, drop: 0.04, tw: 0, ltw: 0,
 };
 const RECEIVE = { // 接發球：左腳在前、拍子舉高、重心低
   ...READY, lT: V(0.18, -0.85, 0.5), lS: V(0.1, -0.97, -0.15), rT: V(-0.22, -0.9, -0.35), rS: V(-0.1, -0.9, -0.42),
@@ -192,6 +192,7 @@ const RECOVER = { ...READY, rT: V(-0.18, -0.85, 0.48), rS: V(-0.1, -0.97, 0.05),
   rU: V(-0.4, -0.5, 0.75), rF: V(0, 0.5, 0.86), lean: 0.12, drop: 0.18 };
 const KINDS = { behind: BEHIND, tweener: TWEENER, dive: DIVE, net: NET, bnet: BNET, over: OVER, rth: RTH, bover: BOVER, under: UNDER, bunder: BUNDER, lift: LIFT, blift: BLIFT, kill: KILL, bkill: BKILL, side: SIDE, bside: BSIDE, serveB: SERVEB, serveF: SERVEF };
 const STANCES = { B: SERVE_B, F: SERVE_F, R: RECEIVE };
+if (typeof window !== 'undefined') window.__POSE = { READY, RELAX, ALERT, DEFENSE, NETUP, MOVE_ARMS, RECEIVE, SERVE_B, SERVE_F, RECOVER }; // 測試用：調姿勢
 
 // ---------- 魚躍救球（照教學影片＋林丹的魚躍）----------
 // 蹬地壓低 → 低低地平飛出去（超人姿勢、拍子伸直往前）→ 雙手彎著先著地緩衝、全身同時貼地 → 趴一下 → 撐起來（手和膝蓋著地）→ 右腳往前踩、站起來
@@ -651,7 +652,7 @@ export class Rig {
     if (dv) arms = dv.arms; // 魚躍：伸手 → 超人 → 彎手緩衝 → 撐地
     this.aimChain(B.rU, B.rF, B.rH, REST_R_ARM, arms.rU, arms.rF, chestQ, false, pose.tw || 0);
     B.rH.rotation.set(0, pose.wY || 0, pose.wZ || 0); // 手腕：扣腕／甩腕
-    this.aimChain(B.lU, B.lF, B.lH, REST_L_ARM, arms.lU, arms.lF, chestQ);
+    this.aimChain(B.lU, B.lF, B.lH, REST_L_ARM, arms.lU, arms.lF, chestQ, false, pose.ltw || 0); // ltw：非持拍手前臂轉（手心朝哪）
     B.lH.rotation.set(0, 0, -0.15);
     for (const [n, c] of this.fingers) n.rotation.set(0, 0, c);
     for (const [n, c] of this.thumbs) n.rotation.set(0, -0.6 * c, 0.25 * c);
