@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=172';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=172';
-import { attachGesture, chargeOf } from './gesture.js?v=172';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=172';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=172';
-import { buildArena } from './arena.js?v=172';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=180';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=180';
+import { attachGesture, chargeOf } from './gesture.js?v=180';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=180';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=180';
+import { buildArena } from './arena.js?v=180';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0, hawk: 1 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -79,16 +79,17 @@ scene.add(sun);
 (function buildCourt() {
   const court = new THREE.Mesh(new THREE.PlaneGeometry(7.1, 14.6), noOutline(toon(0x3f9e74)));
   court.rotation.x = -Math.PI / 2; court.position.y = 0.005; court.receiveShadow = true; scene.add(court);
-  const lm = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff })), W = 0.05;
+  const lm = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff })), W = 0.04; // 線寬 4 公分
   const line = (x1, z1, x2, z2) => {
     const len = Math.hypot(x2 - x1, z2 - z1) + W;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 === x2 ? W : len, x1 === x2 ? len : W), lm);
     m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2); scene.add(m);
   };
-  const X = 3.05, Xs = 2.59, Z = 6.7;
+  // 線寬算在場內（正式規則）：邊線、底線的外緣＝界線；前發球線的靠網那一邊＝界線；雙打後發球線的外緣＝界線
+  const X = 3.05 - W / 2, Xs = 2.59 - W / 2, Z = 6.7 - W / 2;
   line(-X, -Z, X, -Z); line(-X, Z, X, Z); line(-X, -Z, -X, Z); line(X, -Z, X, Z);
   line(-Xs, -Z, -Xs, Z); line(Xs, -Z, Xs, Z);
-  for (const s of [-1, 1]) { line(-X, s * 1.98, X, s * 1.98); line(-X, s * 5.94, X, s * 5.94); line(0, s * 1.98, 0, s * Z); }
+  for (const s of [-1, 1]) { line(-X, s * (1.98 + W / 2), X, s * (1.98 + W / 2)); line(-X, s * (5.94 - W / 2), X, s * (5.94 - W / 2)); line(0, s * 1.98, 0, s * Z); }
   const pm = noOutline(toon(0x333333));
   for (const s of [-1, 1]) {
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.55, 12), pm);
@@ -415,10 +416,25 @@ const halfW = () => (dbl() ? 3.05 : COURT.halfW);          // 雙打邊線比較
 const serveLong = () => (dbl() ? COURT.halfL - 0.76 : COURT.halfL); // 雙打發球不能超過雙打後發球線
 
 // 界內：單打邊線、底線；發球還要過前發球線、落在對角的發球區（serveX＝發球的人站的 x；中線壓線算界內）
+// 球頭（軟木）底部半徑約 1.4 cm：只要碰到線就算界內（壓線＝好球）
+const BASE_R = 0.014;
 function inBounds(x, z, side, serve, serveX) {
-  if (!(Math.abs(x) <= halfW() && Math.abs(z) <= COURT.halfL && z * side > 0)) return false;
+  if (!(Math.abs(x) - BASE_R <= halfW() && Math.abs(z) - BASE_R <= COURT.halfL && z * side > 0)) return false;
   if (!serve) return true;
-  return Math.abs(z) >= COURT.shortLine && Math.abs(z) <= serveLong() && (serveX === undefined || x * Math.sign(serveX || 1) <= 0.02);
+  return Math.abs(z) + BASE_R >= COURT.shortLine && Math.abs(z) - BASE_R <= serveLong() && (serveX === undefined || x * Math.sign(serveX || 1) - BASE_R <= 0.02);
+}
+// 離最近的界線多遠（鷹眼用）：正＝在界內那一側、負＝界外；單位公尺（球頭邊緣到界線）
+function lineCall(x, z, serve, serveX, isIn) {
+  const ax = Math.abs(x), az = Math.abs(z), c = [];
+  c.push({ m: halfW() - (ax - BASE_R), axis: 'x', v: Math.sign(x || 1) * halfW(), name: '邊線' });
+  c.push({ m: COURT.halfL - (az - BASE_R), axis: 'z', v: Math.sign(z || 1) * COURT.halfL, name: '底線' });
+  if (serve) {
+    c.push({ m: (az + BASE_R) - COURT.shortLine, axis: 'z', v: Math.sign(z || 1) * COURT.shortLine, name: '前發球線' });
+    if (dbl()) c.push({ m: serveLong() - (az - BASE_R), axis: 'z', v: Math.sign(z || 1) * serveLong(), name: '後發球線' });
+    if (serveX !== undefined) c.push({ m: 0.02 - (x * Math.sign(serveX || 1) - BASE_R), axis: 'x', v: 0, name: '中線' });
+  }
+  const use = isIn ? c : c.filter(q => q.m < 0); // 出界：只看「真的出去的那條線」（不是剛好離另一條線很近）
+  return (use.length ? use : c).reduce((a, b) => (Math.abs(b.m) < Math.abs(a.m) ? b : a));
 }
 
 // 回位步子的快慢：打很高的球有時間（走回去），網前、吊球、平抽要馬上回
@@ -770,9 +786,11 @@ function humanTryHit(sw) {
                  curve: sw.g.curve, y: r.y, backhand: stroke[0] === 'b', rth: stroke === 'rth', fancy });
 }
 
+const flight = []; // 鷹眼重播用：最近 1.5 秒的球路
 function resolveLanding() {
   const s = shuttle, h = s.lastHitter;
   if (!h) return;
+
   if (lesson) { lessonLanded(); return; }
   const landSide = s.p.z >= 0 ? 1 : -1;
   let winner, reason;
@@ -783,8 +801,74 @@ function resolveLanding() {
   else if (s.serve && Math.abs(s.p.x) <= halfW() && Math.abs(s.p.z) > serveLong() && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球太長（超過雙打後發球線）'; }
   else if (s.serve && Math.abs(s.p.x) <= halfW() && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球發錯區（要發到對角）'; }
   else { winner = other(h); reason = '出界'; }
+  const lc = !s.netFault ? lineCall(s.p.x, s.p.z, s.serve, s.serveX, reason === '落地得分') : null;
   point(winner, reason);
+  // 鷹眼：落在對面場、離線 8 公分以內（很近的界內球或界外球）→ 鏡頭切過去看
+  if (lc && landSide !== h.side && Math.abs(lc.m) < 0.08 && settings.hawk && phase === 'point') startHawk(lc, reason === '落地得分');
 }
+
+// ---------------- 鷹眼重播 ----------------
+let hawk = null;
+const hawkTrail = new THREE.Line(new THREE.BufferGeometry(), noOutline(new THREE.LineBasicMaterial({ color: 0xffe14d })));
+hawkTrail.visible = false; scene.add(hawkTrail);
+const hawkMark = new THREE.Mesh(new THREE.CircleGeometry(BASE_R, 24), noOutline(new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.9, depthWrite: false })));
+hawkMark.rotation.x = -Math.PI / 2; hawkMark.visible = false; scene.add(hawkMark);
+const hawkRing = new THREE.Mesh(new THREE.RingGeometry(BASE_R * 1.6, BASE_R * 2.2, 32), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })));
+hawkRing.rotation.x = -Math.PI / 2; hawkRing.visible = false; scene.add(hawkRing);
+function startHawk(lc, isIn) {
+  const land = { x: shuttle.p.x, z: shuttle.p.z };
+  const pts = flight.filter(q => q.t >= simT - 0.9).map(q => ({ ...q }));
+  if (pts.length < 2) return;
+  hawk = { el: 0, lc, isIn, land, pts, banner: $('#banner').textContent, color: $('#banner').style.color };
+  phaseT = Math.max(phaseT, simT + 4.2); // 鷹眼看完才發下一球
+  $('#banner').textContent = '鷹眼重播…'; $('#banner').style.color = '#fff'; $('#banner').style.top = '18%'; // 字放上面，不擋住落點
+  hawkMark.material.color.set(isIn ? 0x34c759 : 0xff3b30);
+}
+const HAWK_PLAY = 1.8, HAWK_END = 4.0; // 球路慢動作重播 1.8 秒，判定結果停到 4 秒
+function renderHawk(rdt) {
+  if (!hawk) return;
+  const el = (hawk.el += rdt);
+  const showActors = v => { for (const a of actors) { if (a.rig) a.rig.root.visible = v; else if (a.mesh) a.mesh.visible = v; } };
+  if (el > HAWK_END || phase !== 'point') {
+    if (phase === 'point') { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; }
+    $('#banner').style.top = '';
+    hawk = null; hawkTrail.visible = hawkMark.visible = hawkRing.visible = false;
+    showActors(true); if (!drill) shuttleMesh.visible = true;
+    return;
+  }
+  showActors(false); // 跟真的鷹眼一樣：只看球和線（人不會擋住鏡頭）
+  const { land, lc, pts } = hawk;
+  // 鏡頭：低低地沿著那條線看過去（看得出球頭和線的關係）
+  const zIn = Math.sign(land.z || 1); // 落點那一半場
+  let pos, at = new THREE.Vector3(land.x, 0, land.z);
+  if (lc.axis === 'x') pos = new THREE.Vector3(lc.v + Math.sign(lc.v || 1) * 0.12, 0.32, land.z + zIn * 0.75); // 邊線：沿著線、從落點後面低低地看
+  else pos = new THREE.Vector3(land.x + (land.x > 0 ? -0.75 : 0.75), 0.32, lc.v + Math.sign(lc.v) * 0.12);       // 底線／發球線：從旁邊沿著線看
+  const zoom = Math.min(1, el / 0.6); // 先拉近
+  camera.position.lerp(pos, 0.25 + 0.75 * zoom); camera.lookAt(at);
+  // 球路：慢動作畫出最後一段，球跟著走
+  const u = Math.min(1, el / HAWK_PLAY), n = Math.max(2, Math.ceil(pts.length * u));
+  const sub = pts.slice(0, n), last = sub[sub.length - 1];
+  hawkTrail.geometry.setFromPoints(sub.map(q => new THREE.Vector3(q.x, Math.max(0.004, q.y), q.z)));
+  hawkTrail.visible = true;
+  shuttleMesh.position.set(last.x, Math.max(0.02, last.y), last.z);
+  shuttleMesh.visible = u < 1; // 落地後只留球頭的印子（看得清楚和線的距離）
+  if (u < 1) {
+    const prev = sub[Math.max(0, sub.length - 2)];
+    shuttleMesh.lookAt(last.x + (last.x - prev.x), last.y + (last.y - prev.y) - 0.001, last.z + (last.z - prev.z));
+  } else {
+    // 落地：在球頭碰地的地方畫出印子＋判定
+    hawkMark.position.set(land.x, 0.013, land.z); hawkRing.position.set(land.x, 0.012, land.z);
+    hawkMark.visible = hawkRing.visible = true;
+    const mm = Math.round(Math.abs(lc.m) * 1000);
+    // 線寬 4 cm 算在場內：球頭有碰到線＝壓線；完全在線內側＝界內（離線多少）；整個在線外＝出界
+    const LW = 0.04, onLine = hawk.isIn && lc.m <= LW + 2 * BASE_R;
+    const detail = !hawk.isIn ? `球頭離${lc.name} ${mm} mm` : onLine ? `球頭壓到${lc.name}` : `離${lc.name}內緣 ${Math.round((lc.m - LW - 2 * BASE_R) * 1000)} mm`;
+    $('#banner').innerHTML = `鷹眼・${hawk.isIn ? (onLine ? '壓線 IN' : '界內 IN') : '出界 OUT'}<br><small style="font-size:16px">${detail}</small>`;
+    $('#banner').style.color = hawk.isIn ? '#7dff9a' : '#ff8a80';
+    if (el > HAWK_END - 0.5) { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; $('#banner').style.top = ''; }
+  }
+}
+window.__hawk = (x, z) => { Object.assign(shuttle.p, { x, y: 0.001, z }); }; // 測試用
 
 // ---------------- 風格分 ----------------
 const style = { total: 0, combo: 0, best: 0 };
@@ -1079,8 +1163,10 @@ function fixed() {
     if (phase === 'point' && simT >= phaseT) setupServe();
     return;
   }
-  const zPrev = shuttle.p.z;
+  const zPrev = shuttle.p.z, pPrev = { ...shuttle.p };
   step(shuttle);
+  flight.push({ t: simT, x: shuttle.p.x, y: Math.max(0, shuttle.p.y), z: shuttle.p.z }); // 鷹眼重播用：最近 1.5 秒的球路
+  while (flight.length && flight[0].t < simT - 1.5) flight.shift();
   if (!shuttle.netFault && Math.sign(zPrev) !== Math.sign(shuttle.p.z) && shuttle.p.y < NET_H) {
     shuttle.netFault = true; netSound();
     shuttle.p.z = zPrev > 0 ? 0.06 : -0.06;
@@ -1091,7 +1177,13 @@ function fixed() {
   if (simT >= (replanAt || 0)) { replanAt = simT + 0.08; for (const a of actors) replanKill(a); }
   for (const a of actors) if (auto(a) && a.plan && simT >= a.plan.t) aiTryHit(a);
   if (pending && simT >= pending.t) { const p = pending; pending = null; humanTryHit(p); }
-  if (shuttle.p.y <= 0) { shuttle.p.y = 0; resolveLanding(); floorHit(); }
+  if (shuttle.p.y <= 0) {
+    // 落點用內插算到碰地的那一瞬間（一格之內球還會水平移幾公分，鷹眼要準到毫米）
+    const f = pPrev.y > 0 ? pPrev.y / (pPrev.y - shuttle.p.y) : 1;
+    shuttle.p.x = pPrev.x + (shuttle.p.x - pPrev.x) * f; shuttle.p.z = pPrev.z + (shuttle.p.z - pPrev.z) * f; shuttle.p.y = 0;
+    if (flight.length) Object.assign(flight[flight.length - 1], { x: shuttle.p.x, y: 0, z: shuttle.p.z });
+    resolveLanding(); floorHit();
+  }
 }
 
 // 羽毛球碰到地板：球頭（軟木）先著地 → 小小彈起來、往前滑一點、翻一下 → 最後側躺（球頭和羽毛邊緣都碰地）
@@ -1701,6 +1793,7 @@ function render(rdt) {
   { arena.update(performance.now() / 1000, crowdCheer); crowdCheer = Math.max(0, crowdCheer - rdt * 0.35); }
   if (settings.stamina) staminaUI();
   if (shake > 0) { camera.position.x += rand(-1, 1) * shake * 0.3; camera.position.y += rand(-1, 1) * shake * 0.3; shake -= rdt; }
+  renderHawk(rdt);
   const co = window.__camOverride; // 測試用特寫鏡頭
   if (co) { camera.position.set(...co.pos); camera.lookAt(...co.at); }
   effect.render(scene, camera);
