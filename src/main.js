@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=181';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=181';
-import { attachGesture, chargeOf } from './gesture.js?v=181';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=181';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=181';
-import { buildArena } from './arena.js?v=181';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=190';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=190';
+import { attachGesture, chargeOf } from './gesture.js?v=190';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=190';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=190';
+import { buildArena } from './arena.js?v=190';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -803,10 +803,65 @@ function resolveLanding() {
   else if (s.serve && Math.abs(s.p.x) <= halfW() && Math.abs(s.p.z) <= COURT.halfL) { winner = other(h); reason = '發球發錯區（要發到對角）'; }
   else { winner = other(h); reason = '出界'; }
   const lc = !s.netFault ? lineCall(s.p.x, s.p.z, s.serve, s.serveX, reason === '落地得分') : null;
+  // 挑戰制：很近的球先由線審喊（偶爾看錯），輸的一方可以挑戰、看鷹眼
+  if (lc && landSide !== h.side && Math.abs(lc.m) < 0.08 && settings.hawk === 2) { lineJudge(lc, h, winner, reason); return; }
   point(winner, reason);
   // 鷹眼：落在對面場、離線 8 公分以內（很近的界內球或界外球）→ 鏡頭切過去看
-  if (lc && landSide !== h.side && Math.abs(lc.m) < 0.08 && settings.hawk && phase === 'point') startHawk(lc, reason === '落地得分');
+  if (lc && landSide !== h.side && Math.abs(lc.m) < 0.08 && settings.hawk === 1 && phase === 'point') startHawk(lc, reason === '落地得分');
 }
+
+// ---------------- 挑戰制（線審＋鷹眼）----------------
+// 正式規則：每局每邊挑戰「失敗」2 次就不能再挑戰（成功不扣）；換局重算
+let call = null;
+const chFail = { 0: 0, 1: 0 };
+const chBtn = document.createElement('button');
+chBtn.id = 'challenge';
+chBtn.style.cssText = 'position:fixed;left:50%;bottom:16%;transform:translateX(-50%);z-index:30;padding:14px 30px;border:0;border-radius:999px;background:#ffd84d;color:#1b1b1b;font-size:20px;font-weight:900;box-shadow:0 4px 14px #0008;display:none';
+document.body.appendChild(chBtn);
+chBtn.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); if (call && !call.challenged) challenge(0); });
+function lineJudge(lc, h, winner, reason) {
+  const truthIn = reason === '落地得分';
+  const m = Math.abs(lc.m), pErr = m < 0.05 ? 0.35 * (1 - m / 0.05) : 0; // 越貼線越容易看錯（最多約 1/3）
+  const wrong = Math.random() < pErr;
+  const callIn = wrong ? !truthIn : truthIn;
+  const callWinner = callIn ? h : other(h);
+  const callReason = callIn ? '落地得分' : (truthIn ? '出界' : reason);
+  const loser = other(callWinner), li = sideIdx(loser.side);
+  call = { snap: snapFlight(), lc, h, truthIn, truthWinner: winner, truthReason: reason, callIn, callWinner, callReason, wrong, li, t: simT, challenged: false };
+  phase = 'review'; phaseT = simT + 3.2; // 3 秒內決定要不要挑戰
+  $('#banner').innerHTML = `線審：${callIn ? '界內！' : '出界！'}`; $('#banner').style.color = '#fff';
+  const left = 2 - chFail[li];
+  if (left > 0 && !auto(li === 0 ? me : cpu)) { chBtn.textContent = `挑戰（剩 ${left} 次）`; chBtn.style.display = 'block'; }
+  else if (left > 0) call.aiAt = simT + 0.9 + Math.random() * 0.8; // 電腦想一下
+}
+function challenge(li) {
+  call.challenged = true; chBtn.style.display = 'none';
+  $('#banner').innerHTML = `${li === 0 ? (dbl() ? '你們' : '你') : '電腦'}提出挑戰！`; $('#banner').style.color = '#ffd84d';
+  phaseT = simT + 99; // 等鷹眼看完
+  startHawk(call.lc, call.truthIn, () => finishCall(), call.snap);
+}
+function reviewTick() {
+  if (!call) return;
+  if (!call.challenged && call.aiAt && simT >= call.aiAt) { // 電腦要不要挑戰：線審真的判錯時多半會挑戰，判對時偶爾也賭一下
+    call.aiAt = 0;
+    if (Math.random() < (call.wrong ? 0.75 : 0.15)) challenge(call.li);
+  }
+  if (call && !call.challenged && simT >= phaseT) { chBtn.style.display = 'none'; finishCall(); }
+}
+function finishCall() {
+  const c = call; call = null; chBtn.style.display = 'none';
+  if (!c) return;
+  let pre = '';
+  if (c.challenged) {
+    if (c.wrong) pre = '挑戰成功・改判　';
+    else { chFail[c.li]++; pre = `挑戰失敗（剩 ${Math.max(0, 2 - chFail[c.li])} 次）　`; }
+  }
+  phase = 'rally'; // point() 會再設定
+  const useTruth = c.challenged && c.wrong;
+  point(useTruth ? c.truthWinner : c.callWinner, useTruth ? c.truthReason : c.callReason);
+  if (pre) $('#banner').textContent = pre + $('#banner').textContent;
+}
+window.__call = () => call; // 測試用
 
 // ---------------- 鷹眼重播 ----------------
 let hawk = null;
@@ -816,12 +871,13 @@ const hawkMark = new THREE.Mesh(new THREE.CircleGeometry(BASE_R, 24), noOutline(
 hawkMark.rotation.x = -Math.PI / 2; hawkMark.visible = false; scene.add(hawkMark);
 const hawkRing = new THREE.Mesh(new THREE.RingGeometry(BASE_R * 1.8, BASE_R * 2.8, 32), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })));
 hawkRing.rotation.x = -Math.PI / 2; hawkRing.visible = false; scene.add(hawkRing);
-function startHawk(lc, isIn) {
-  const land = { x: shuttle.p.x, z: shuttle.p.z };
-  const pts = flight.filter(q => q.t >= simT - 0.9).map(q => ({ ...q }));
-  if (pts.length < 2) return;
-  hawk = { el: 0, lc, isIn, land, pts, banner: $('#banner').textContent, color: $('#banner').style.color };
-  phaseT = Math.max(phaseT, simT + 4.2); // 鷹眼看完才發下一球
+// 落地那一刻的球路＋落點（挑戰制可能過 1～2 秒才看，要先存起來）
+function snapFlight() { const t = flight.length ? flight[flight.length - 1].t : simT; return { land: { x: shuttle.p.x, z: shuttle.p.z }, pts: flight.filter(q => q.t >= t - 0.9).map(q => ({ ...q })) }; }
+function startHawk(lc, isIn, onDone, snap) {
+  const { land, pts } = snap || snapFlight();
+  if (pts.length < 2) { if (onDone) onDone(); return; }
+  hawk = { el: 0, onDone, lc, isIn, land, pts, banner: $('#banner').textContent, color: $('#banner').style.color };
+  if (!onDone) phaseT = Math.max(phaseT, simT + 4.2); // 鷹眼看完才發下一球
   $('#banner').textContent = '鷹眼重播…'; $('#banner').style.color = '#fff'; $('#banner').style.top = '18%'; // 字放上面，不擋住落點
   hawkMark.material.color.set(isIn ? 0x34c759 : 0xff3b30);
 }
@@ -830,11 +886,12 @@ function renderHawk(rdt) {
   if (!hawk) return;
   const el = (hawk.el += rdt);
   const showActors = v => { for (const a of actors) { if (a.rig) a.rig.root.visible = v; else if (a.mesh) a.mesh.visible = v; } };
-  if (el > HAWK_END || phase !== 'point') {
+  if (el > HAWK_END || (phase !== 'point' && phase !== 'review')) {
     if (phase === 'point') { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; }
     $('#banner').style.top = '';
-    hawk = null; hawkTrail.visible = hawkMark.visible = hawkRing.visible = false;
+    const done = hawk.onDone; hawk = null; hawkTrail.visible = hawkMark.visible = hawkRing.visible = false;
     showActors(true); if (!drill) shuttleMesh.visible = true;
+    if (done && phase === 'review') done();
     return;
   }
   showActors(false); // 跟真的鷹眼一樣：只看球和線（人不會擋住鏡頭）
@@ -870,7 +927,7 @@ function renderHawk(rdt) {
     const detail = !hawk.isIn ? `球頭離${lc.name} ${mm} mm` : onLine ? `球頭壓到${lc.name}` : `離${lc.name}內緣 ${Math.round((lc.m - LW - 2 * BASE_R) * 1000)} mm`;
     $('#banner').innerHTML = `鷹眼・${hawk.isIn ? (onLine ? '壓線 IN' : '界內 IN') : '出界 OUT'}<br><small style="font-size:16px">${detail}</small>`;
     $('#banner').style.color = hawk.isIn ? '#7dff9a' : '#ff8a80';
-    if (el > HAWK_END - 0.5) { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; $('#banner').style.top = ''; }
+    if (el > HAWK_END - 0.5 && !hawk.onDone) { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; $('#banner').style.top = ''; }
   }
 }
 window.__hawk = (x, z) => { Object.assign(shuttle.p, { x, y: 0.001, z }); }; // 測試用
@@ -941,7 +998,7 @@ function point(w, reason) {
   if (gameWon && !won) { // 這局結束、比賽還沒結束：換場、勝方下一局先發
     const n = games[0] + games[1];
     $('#banner').textContent = `第 ${n} 局 ${i === 0 ? '你贏' : '電腦贏'}　${scores[0]}:${scores[1]}　（局數 ${games[0]}:${games[1]}）・換場`;
-    scores[0] = scores[1] = 0; server = i; midSwitched = false;
+    scores[0] = scores[1] = 0; server = i; midSwitched = false; chFail[0] = chFail[1] = 0; // 換局：挑戰次數重算
     if (dbl()) serverActor = rightCourt[w.side]; // 新的一局：勝方右區的人先發
     for (const a of actors) a.stam = clamp((a.stam ?? 100) + 40, 0, 100); // 局間休息
     phase = 'point'; phaseT = simT + 3.2; updateScore(); setHint();
@@ -1162,6 +1219,7 @@ function fixed() {
     }
     return;
   }
+  if (phase === 'review') { floorTick(); moveActors(); reviewTick(); return; } // 線審喊完、等挑戰
   if (phase === 'point' || phase === 'over') {
     floorTick();
     moveActors();
@@ -1458,7 +1516,7 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   if (k === 'sound' || k === 'crowd') applySound();
   if (k === 'call' && v) { ensureAudio(); say('報分開啟'); }
 }));
-function restart() { stopDrill(); serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
+function restart() { stopDrill(); chFail[0] = chFail[1] = 0; if (call) { call = null; chBtn.style.display = 'none'; } serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
 $('#gear').onclick = () => { syncSettingsUI(); $('#settings').classList.remove('hidden'); };
 $('#close').onclick = () => $('#settings').classList.add('hidden');
 $('#restart').onclick = () => { restart(); $('#settings').classList.add('hidden'); };
