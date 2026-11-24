@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=180';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=180';
-import { attachGesture, chargeOf } from './gesture.js?v=180';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=180';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=180';
-import { buildArena } from './arena.js?v=180';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=181';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=181';
+import { attachGesture, chargeOf } from './gesture.js?v=181';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=181';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=181';
+import { buildArena } from './arena.js?v=181';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -79,11 +79,12 @@ scene.add(sun);
 (function buildCourt() {
   const court = new THREE.Mesh(new THREE.PlaneGeometry(7.1, 14.6), noOutline(toon(0x3f9e74)));
   court.rotation.x = -Math.PI / 2; court.position.y = 0.005; court.receiveShadow = true; scene.add(court);
-  const lm = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff })), W = 0.04; // 線寬 4 公分
+  // 線貼著地板畫（高 6 mm，原本 1 cm 會蓋住躺在線上的羽毛球球頭，看起來球被線吃掉）；polygonOffset 避免和地板閃爍
+  const lm = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 })), W = 0.04; // 線寬 4 公分
   const line = (x1, z1, x2, z2) => {
     const len = Math.hypot(x2 - x1, z2 - z1) + W;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 === x2 ? W : len, x1 === x2 ? len : W), lm);
-    m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.01, (z1 + z2) / 2); scene.add(m);
+    m.rotation.x = -Math.PI / 2; m.position.set((x1 + x2) / 2, 0.006, (z1 + z2) / 2); scene.add(m);
   };
   // 線寬算在場內（正式規則）：邊線、底線的外緣＝界線；前發球線的靠網那一邊＝界線；雙打後發球線的外緣＝界線
   const X = 3.05 - W / 2, Xs = 2.59 - W / 2, Z = 6.7 - W / 2;
@@ -813,7 +814,7 @@ const hawkTrail = new THREE.Line(new THREE.BufferGeometry(), noOutline(new THREE
 hawkTrail.visible = false; scene.add(hawkTrail);
 const hawkMark = new THREE.Mesh(new THREE.CircleGeometry(BASE_R, 24), noOutline(new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.9, depthWrite: false })));
 hawkMark.rotation.x = -Math.PI / 2; hawkMark.visible = false; scene.add(hawkMark);
-const hawkRing = new THREE.Mesh(new THREE.RingGeometry(BASE_R * 1.6, BASE_R * 2.2, 32), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })));
+const hawkRing = new THREE.Mesh(new THREE.RingGeometry(BASE_R * 1.8, BASE_R * 2.8, 32), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })));
 hawkRing.rotation.x = -Math.PI / 2; hawkRing.visible = false; scene.add(hawkRing);
 function startHawk(lc, isIn) {
   const land = { x: shuttle.p.x, z: shuttle.p.z };
@@ -851,7 +852,7 @@ function renderHawk(rdt) {
   hawkTrail.geometry.setFromPoints(sub.map(q => new THREE.Vector3(q.x, Math.max(0.004, q.y), q.z)));
   hawkTrail.visible = true;
   shuttleMesh.position.set(last.x, Math.max(0.02, last.y), last.z);
-  shuttleMesh.visible = u < 1; // 落地後只留球頭的印子（看得清楚和線的距離）
+  shuttleMesh.visible = true;
   if (u < 1) {
     const prev = sub[Math.max(0, sub.length - 2)];
     shuttleMesh.lookAt(last.x + (last.x - prev.x), last.y + (last.y - prev.y) - 0.001, last.z + (last.z - prev.z));
@@ -859,6 +860,10 @@ function renderHawk(rdt) {
     // 落地：在球頭碰地的地方畫出印子＋判定
     hawkMark.position.set(land.x, 0.013, land.z); hawkRing.position.set(land.x, 0.012, land.z);
     hawkMark.visible = hawkRing.visible = true;
+    // 球停在碰地那一刻的樣子：球頭朝下點在印子上、羽毛朝來的方向（球不會消失，印子的外圈露在球頭外面）
+    const prev = pts[Math.max(0, pts.length - 4)];
+    shuttleMesh.position.set(land.x, 0.03, land.z);
+    shuttleMesh.lookAt(land.x + (land.x - prev.x) * 0.3, 0.03 - Math.max(0.05, prev.y - last.y), land.z + (land.z - prev.z) * 0.3);
     const mm = Math.round(Math.abs(lc.m) * 1000);
     // 線寬 4 cm 算在場內：球頭有碰到線＝壓線；完全在線內側＝界內（離線多少）；整個在線外＝出界
     const LW = 0.04, onLine = hawk.isIn && lc.m <= LW + 2 * BASE_R;
@@ -1746,8 +1751,8 @@ function render(rdt) {
   shuttleMesh.position.set(p.x, p.y, p.z);
   if (shuttle.restT && !shuttle.held) { // 側躺：球頭朝前、往下壓到地，羽毛尾端翹起約 15°（球頭半徑 2 cm、羽毛尾端碰地）
     const d = shuttle.lieDir || { x: 0, z: -1 }, k = Math.min(1, (simT - shuttle.restT) / 0.22), tilt = 0.27;
-    shuttleMesh.position.y = 0.02;
-    shuttleTmp.position.copy(shuttleMesh.position); shuttleTmp.lookAt(p.x + d.x * Math.cos(tilt), 0.02 - Math.sin(tilt), p.z + d.z * Math.cos(tilt));
+    shuttleMesh.position.y = 0.022;
+    shuttleTmp.position.copy(shuttleMesh.position); shuttleTmp.lookAt(p.x + d.x * Math.cos(tilt), 0.022 - Math.sin(tilt), p.z + d.z * Math.cos(tilt));
     shuttleMesh.quaternion.slerp(shuttleTmp.quaternion, k < 1 ? 0.25 : 1);
   } else if (shuttle.bounces && !shuttle.held) { // 彈跳中：翻滾
     shuttleTmp.position.copy(shuttleMesh.position); shuttleTmp.lookAt(p.x + shuttle.v.x, p.y + shuttle.v.y, p.z + shuttle.v.z);
