@@ -27,7 +27,7 @@ export function planMove(a, S, o) {
   const lungeFoot = () => {
     if (!C) return { lat: rel.lat + 0.2, fwd: rel.fwd + 0.5 };
     const dx = C.lat - rel.lat, df = C.fwd - rel.fwd, dl = Math.hypot(dx, df) || 1;
-    const reach = clamp(dl - 0.3, 0.45, o.killStep ? 0.85 : 1.2); // 撲球：最後一步爆發性大步跨出、身體保持高
+    const reach = clamp(dl - (o.killStep ? 0.3 : 0.55), 0.4, o.killStep ? 0.85 : 1.2); // 前腳停在球前約 0.55 m：手臂＋拍子伸出去剛好打到（不是腳踩到球下面） // 撲球：最後一步爆發性大步跨出、身體保持高
     return { lat: rel.lat + (dx / dl) * reach, fwd: rel.fwd + (df / dl) * reach };
   };
   const stance = (foot, frac) => ({ lat: rel.lat * frac + (foot === 'R' ? 0.2 : -0.2), fwd: rel.fwd * frac + (foot === 'R' ? 0.04 : -0.04) });
@@ -40,7 +40,13 @@ export function planMove(a, S, o) {
     if (dist > 0.12) add(rel.lat >= 0 ? 'R' : 'L', stance(rel.lat >= 0 ? 'R' : 'L', 1), 1, 0.18, 0.05, 0); // 小調整
   } else if (front || (reachLow && !rear)) {
     if (fh) { // 正手網前：（遠的話）左腳並步 → 右腳跨步
-      if (dist > 1.0) add('L', { lat: Math.min(rel.lat * 0.45 + 0.05, 0.05), fwd: rel.fwd * 0.45 - 0.12 }, 0.45, 0.2, 0.07, -0.15); // 左腳往前並步，不跨到右腳的右邊（會打結）
+      // 遠：右腳先往球的方向踏一小步 → 左腳並步跟到右腳後面（不超過右腳）→ 右腳大跨步。重心一直跟著右腳走（不會變成左腳在前、身體壓在左腳上）
+      if (dist > 1.6) {
+        const r1 = { lat: rel.lat * 0.3 + 0.18, fwd: rel.fwd * 0.3 + 0.03 };
+        add('R', r1, 0.3, 0.17, 0.07, -0.2);
+        const ul = rel.lat / dist, uf = rel.fwd / dist; // 前進方向
+        add('L', { lat: r1.lat - ul * 0.16 - 0.2, fwd: r1.fwd - uf * 0.16 }, 0.42, 0.14, 0.04, -0.2); // 左腳靠到右腳的左後方
+      } else if (dist > 1.0) add('L', { lat: Math.min(rel.lat * 0.45 - 0.1, 0), fwd: Math.min(rel.fwd * 0.45 - 0.15, 0.3) }, 0.4, 0.18, 0.06, -0.15); // 近：左腳小並步（停在右腳左後方）→ 右腳跨步
       add('R', lungeFoot(), 1, 0.27, 0.13, -0.2, !o.kill); // 右腳跨出、落地那一刻擊球（撲球教學：Hit and Land）；高的跳撲不跨
     } else { // 反手網前：以左腳為軸轉身 → 右腳跨過去
       add('L', { lat: -0.28 + rel.lat * 0.2, fwd: 0.08 + rel.fwd * 0.2 }, 0.25, 0.16, 0.05, 0.6);
@@ -128,12 +134,16 @@ export function planJumpFollow(a, target, tStart, fall) {
 
 // 排時間：一步接一步；最後的跨步要在擊球前一瞬間落地；時間不夠就整體加快（最快到 55%）
 // 一步身體最多移 0.7 m（跨步 1 m）；距離太遠就在前面補小碎步（左右腳交替），不讓一步跨太大、看起來像瞬移
-const STEP_CAP = 0.8, LUNGE_CAP = 1.0; // 步子大一點（影片比對：真人大步蹬地）
+const STEP_CAP = 0.8, LUNGE_CAP = 1.2; // 步子大一點（影片比對：真人大步蹬地）
 function splitSteps(moves, P, side) {
   const out = []; let from = { ...P };
   for (const m of moves) {
     const dx = m.body.x - from.x, dz = m.body.z - from.z, d = Math.hypot(dx, dz);
-    const cap = m.lunge ? LUNGE_CAP : STEP_CAP, extra = Math.ceil(d / cap) - 1;
+    const cap = m.lunge ? LUNGE_CAP : STEP_CAP;
+    let extra = Math.ceil(d / cap) - 1;
+    // 補的步要和前一步換腳：不然會出現同一隻腳連踩兩次（例如左、左、右跨步）
+    const prevFoot = out.length ? out[out.length - 1].foot : null;
+    if (extra > 0 && prevFoot && ((extra - 1) % 2 === 0 ? (m.foot === 'R' ? 'L' : 'R') : m.foot) === prevFoot) extra++;
     if (extra > 0) {
       const lastBody = m.lunge ? d - cap : d * extra / (extra + 1); // 補的步走到哪
       for (let i = 1; i <= extra; i++) {

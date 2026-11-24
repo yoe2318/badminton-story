@@ -77,13 +77,13 @@ const BUNDER = {
 const LIFT = {
   prep: { ...READY, ...LUNGE, rU: V(-0.45, -0.75, 0.48), rF: V(-0.3, -0.9, -0.3), lU: V(0.6, 0.0, -0.8), lF: V(0.45, 0.05, -0.89), yaw: -0.3 }, // 手肘彎、拍頭靠手腕放到後下方（精簡）
   hit: { ...READY, ...LUNGE, rU: V(-0.3, -0.6, 0.74), rF: V(-0.12, -0.55, 0.83), lU: V(0.55, 0.08, -0.83), lF: V(0.4, 0.12, -0.91), yaw: 0.05 },
-  follow: { ...READY, ...LUNGE, rU: V(-0.15, 0.8, 0.58), rF: V(0.05, 0.97, 0.25), lU: V(0.55, -0.4, -0.73), lF: V(0.4, -0.5, -0.77), yaw: 0.3, lean: (LUNGE.lean ?? 0.3) * 0.6 },
+  follow: { ...READY, ...LUNGE, rU: V(-0.15, 0.55, 0.82), rF: V(0.0, 0.8, 0.6), lU: V(0.55, -0.4, -0.73), lF: V(0.4, -0.5, -0.77), yaw: 0.3, lean: (LUNGE.lean ?? 0.3) * 0.6 },
   prepT: -0.2, hold: 0.36, // 引拍短；收拍高舉多停一下，看得出是挑球
 };
 const BLIFT = {
   prep: { ...READY, ...LUNGE, rU: V(0.35, -0.7, 0.62), rF: V(0.45, -0.85, -0.25), lU: V(0.55, -0.05, -0.83), lF: V(0.4, 0.0, -0.92), yaw: 0.9 },
   hit: { ...READY, ...LUNGE, rU: V(0.15, -0.55, 0.82), rF: V(0.25, -0.5, 0.83), lU: V(0.5, -0.2, -0.8), lF: V(0.4, -0.3, -0.85), yaw: 0.2 },
-  follow: { ...READY, ...LUNGE, rU: V(0.1, 0.8, 0.59), rF: V(-0.05, 0.97, 0.25), lU: V(0.5, -0.4, -0.77), lF: V(0.4, -0.5, -0.77), yaw: -0.1, lean: (LUNGE.lean ?? 0.3) * 0.6 },
+  follow: { ...READY, ...LUNGE, rU: V(0.1, 0.55, 0.83), rF: V(-0.05, 0.8, 0.6), lU: V(0.5, -0.4, -0.77), lF: V(0.4, -0.5, -0.77), yaw: -0.1, lean: (LUNGE.lean ?? 0.3) * 0.6 },
   prepT: -0.2, hold: 0.36,
 };
 // 撲球：拍子先高舉在身前、手腕後扣 → 手腕往下一壓（短、快）→ 收拍很短停在身前；拿拍腳往前跨
@@ -164,29 +164,31 @@ const DIVE = {
   long: true, // 撲倒後要停一下才起來
 };
 // 每個動作的手腕和前臂：準備時扣腕、外旋 → 擊球時甩腕、內旋 → 收拍
+// [wZ 手腕前後扣（屈／伸）, tw 前臂轉, wY 手腕往拇指側（＋，拍頭翹起）／小指側（－，拍頭往下壓）]
+// 擊球那一瞬間的手腕另外由「拍頭找球」接手（見 update），這裡管的是準備和收拍
 const WRIST = {
-  OVER: [[-1.0, -0.5], [0.05, 0.35], [0.7, 0.9]],
-  RTH: [[-1.0, -0.5], [0.05, 0.35], [0.7, 0.9]],
-  BOVER: [[0.7, 0.6], [0, 0], [-0.6, -0.6]],
-  UNDER: [[-0.7, -0.3], [0, 0.2], [0.5, 0.6]],
-  LIFT: [[-1.1, -0.5], [0, 0.25], [0.9, 0.8]],
-  KILL: [[-0.4, -0.2], [0.6, 0.3], [0.95, 0.5]],   // 撲球準備：手腕只微扣（拍頭朝上在身前）
-  BKILL: [[0.4, 0.25], [-0.5, 0], [-0.85, -0.3]],
-  BLIFT: [[0.9, 0.6], [0, 0], [-0.8, -0.6]],
-  BUNDER: [[0.5, 0.4], [0, 0], [-0.4, -0.3]],
-  SIDE: [[-0.85, -0.4], [0, 0.25], [0.6, 0.75]],
-  BSIDE: [[0.7, 0.5], [0, 0], [-0.5, -0.5]],
+  OVER: [[-1.0, -0.5, 0.35], [0.05, 0.35, 0], [0.7, 0.9, -0.45]],
+  RTH: [[-1.0, -0.5, 0.35], [0.05, 0.35, 0], [0.7, 0.9, -0.45]],
+  BOVER: [[0.7, 0.6, 0.35], [0, 0, 0], [-0.6, -0.6, -0.35]],
+  UNDER: [[-0.7, -0.3, -0.25], [0, 0.2, 0], [0.5, 0.6, 0.35]],
+  LIFT: [[-1.1, -0.5, -0.25], [0, 0.25, 0], [0.9, 0.8, 0.4]],
+  KILL: [[-0.4, -0.2, 0.45], [0.6, 0.3, 0], [0.95, 0.5, -0.5]],   // 撲球準備：手腕只微扣（拍頭朝上在身前）
+  BKILL: [[0.4, 0.25, 0.45], [-0.5, 0, 0], [-0.85, -0.3, -0.5]],
+  BLIFT: [[0.9, 0.6, -0.25], [0, 0, 0], [-0.8, -0.6, 0.35]],
+  BUNDER: [[0.5, 0.4, -0.2], [0, 0, 0], [-0.4, -0.3, 0.3]],
+  SIDE: [[-0.85, -0.4, 0.25], [0, 0.25, 0], [0.6, 0.75, -0.25]],
+  BSIDE: [[0.7, 0.5, 0.25], [0, 0, 0], [-0.5, -0.5, -0.25]],
   SERVEB: [[0.35, 0], [-0.1, 0], [0, 0]],
-  NET: [[-0.45, -0.7], [-0.1, -0.5], [0, -0.4]],
-  BNET: [[0.4, 0.6], [0.05, 0.45], [0, 0.4]],
+  NET: [[-0.45, -0.7, 0.15], [-0.1, -0.5, 0], [0, -0.4, 0]],
+  BNET: [[0.4, 0.6, 0.15], [0.05, 0.45, 0], [0, 0.4, 0]],
   BEHIND: [[0.5, 0.4], [0, 0.2], [-0.3, 0]],
   TWEENER: [[-0.5, 0], [0.3, 0], [0.4, 0]],
   DIVE: [[-0.6, -0.4], [0, 0], [0.2, 0.2]],
   SERVEF: [[-0.8, -0.3], [0, 0.2], [0.6, 0.6]],
 };
 for (const [name, K] of Object.entries({ OVER, RTH, BOVER, UNDER, BUNDER, LIFT, BLIFT, KILL, BKILL, SIDE, BSIDE, SERVEB, SERVEF, NET, BNET, BEHIND, TWEENER, DIVE })) {
-  ['prep', 'hit', 'follow'].forEach((ph, i) => { K[ph] = { ...K[ph], wZ: WRIST[name][i][0], tw: WRIST[name][i][1] }; });
-  if (K.drop) K.drop = { ...K.drop, wZ: -1.25, tw: -0.75 }; // 拍子下垂：手腕往後扣、前臂外旋
+  ['prep', 'hit', 'follow'].forEach((ph, i) => { K[ph] = { ...K[ph], wZ: WRIST[name][i][0], tw: WRIST[name][i][1], wY: WRIST[name][i][2] || 0 }; });
+  if (K.drop) K.drop = { ...K.drop, wZ: -1.25, tw: -0.75, wY: 0.3 }; // 拍子下垂：手腕往後扣、前臂外旋、拇指側翹起
 }
 const RECOVER = { ...READY, rT: V(-0.18, -0.85, 0.48), rS: V(-0.1, -0.97, 0.05), lT: V(0.2, -0.92, -0.05), lS: V(0.1, -0.97, -0.15),
   rU: V(-0.4, -0.5, 0.75), rF: V(0, 0.5, 0.86), lean: 0.12, drop: 0.18 };
@@ -333,6 +335,9 @@ export async function loadVRM(url) {
 // ---------- 角色動作 ----------
 const qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), qT = new THREE.Quaternion(), qY = new THREE.Quaternion();
 const YAXIS = new THREE.Vector3(0, 1, 0), XAXIS = new THREE.Vector3(1, 0, 0);
+const GRIP_ANGLE = 0.8; // 拍子和前臂的夾角（往拇指那側，約 46°）
+const RACKET_AXIS = new THREE.Vector3(-Math.cos(GRIP_ANGLE), 0, Math.sin(GRIP_ANGLE)); // 拍子在手的座標裡的方向（新版 VRM 正規化骨架）
+const AIM_KINDS = new Set(['lift', 'blift', 'net', 'bnet', 'under', 'bunder', 'side', 'bside', 'over', 'rth', 'bover', 'serveF']);
 const add = (v, x, y, z) => v.add(new THREE.Vector3(x, y, z)).normalize();
 // 給一根往下的骨頭：指向 down、正面朝 fwd（避免腿自己扭轉，膝蓋才會往前彎）
 const _m4 = new THREE.Matrix4();
@@ -385,9 +390,13 @@ export class Rig {
     const pRT = wp(this.b.rT), pRS = wp(this.b.rS), pRF = wp(this.b.rFt), pLT = wp(this.b.lT);
     this.hipOff = { R: pRT, L: pLT };
     this.L1 = pRT.distanceTo(pRS); this.L2 = pRS.distanceTo(pRF); this.ankleY = pRF.y;
+    this.armU = wp(this.b.rU).distanceTo(wp(this.b.rF)); this.armF = wp(this.b.rF).distanceTo(wp(this.b.rH)); // 上臂、前臂長（拍頭找球要用）
     racket.rotation.set(0, 0, Math.PI / 2);
     racket.scale.setScalar(0.9 / this.scale); // 拍子全長約 67 公分（真實尺寸）
-    const holder = new THREE.Group(); holder.position.set(-0.06, 0, 0); holder.rotation.y = 0.5;
+    // 握手式握拍：握把斜斜穿過手掌（從小指下的掌根到食指根部），握把尾端在小指下面一點點、手握住握把下段
+    // （原本握把從指關節直直伸出去，像捏著棍子的尾端，看起來握把很長）
+    const GA = GRIP_ANGLE, GS = 0.05; // 拍子和前臂的夾角（往拇指那側）、握把尾端往掌根移多少
+    const holder = new THREE.Group(); holder.position.set(-0.06 + GS * Math.cos(GA), -0.015, -GS * Math.sin(GA)); holder.rotation.y = GA;
     holder.add(racket);
     if (this.v0) { const fix = new THREE.Group(); fix.rotation.y = Math.PI; fix.add(holder); this.b.rH.add(fix); } // 舊版手的座標轉 180°
     else this.b.rH.add(holder);
@@ -467,7 +476,7 @@ export class Rig {
     if (sp && (a.lunge || netK) && a.contactP && LUNGE_KINDS.has(a.swingKind) && this.lungeFor !== a.swingT && d > -0.32 && d < 0.05) {
       this.lungeFor = a.swingT;
       const cx = a.contactP.x - p.x, cz = a.contactP.z - p.z, dist = Math.hypot(cx, cz) || 1;
-      const reach = clampN(dist - 0.3, netK ? 0.4 : 0.5, a.swingKind === 'kill' || a.swingKind === 'bkill' ? 0.85 : 1.15); // 撲球最後一步大步跨、身體保持高
+      const reach = clampN(dist - (a.swingKind === 'kill' || a.swingKind === 'bkill' ? 0.3 : 0.55), 0.4, a.swingKind === 'kill' || a.swingKind === 'bkill' ? 0.85 : 1.15); // 撲球最後一步大步跨、身體保持高
       this.step('R', p.x + (cx / dist) * reach, p.z + (cz / dist) * reach, t, Math.max(0.08, -0.03 - d), 0.1, Math.atan2(cx, cz));
       if (reach > 0.6 && !(a.swingKind === 'kill' || a.swingKind === 'bkill')) this.dragBack({ x: p.x + (cx / dist) * reach, z: p.z + (cz / dist) * reach }, p, t, Math.max(0.08, -0.03 - d), a.side);
       this.lungeHold = a.swingT + 0.42; // 打完才蹬回來
@@ -561,7 +570,7 @@ export class Rig {
     const sp = spArm || spBody;
     if (sp) {
       const A = spArm || sp, Bd = spBody || sp, W = spWrist || sp;
-      pose = { ...Bd, rU: A.rU, rF: A.rF, lU: A.lU, lF: A.lF, wZ: W.wZ, tw: W.tw };
+      pose = { ...Bd, rU: A.rU, rF: A.rF, lU: A.lU, lF: A.lF, wZ: W.wZ, tw: W.tw, wY: W.wY };
     }
     else if (a.touching) pose = mixPose(from, (KINDS[a.prepKind] || OVER).prep, Math.max(antic, 0.35 + 0.6 * clampN(a.charge || 0, 0, 1))); // 按住蹲低：手先引拍
     if (a.charge > 0) pose = { ...pose, drop: pose.drop + 0.25 * a.charge, lean: pose.lean + 0.15 * a.charge };
@@ -698,8 +707,50 @@ export class Rig {
       pose = { ...pose, wZ: pose.wZ * (1 - w), tw: (kind === 'kill' ? 0.6 : -0.6) * w };
     }
     if (dv) arms = dv.arms; // 魚躍：伸手 → 超人 → 彎手緩衝 → 撐地
+    // 手臂也往球的方向伸一點（擊球那一刻手不會離球太遠或太偏，手腕才轉得到）
+    const cp = a.contactP;
+    const aimOn = sp && !dv && cp && cp.y != null && AIM_KINDS.has(kind) && d > -0.17 && d < 0.09;
+    const aimW = !aimOn ? 0 : d < -0.02 ? smooth(clampN((d + 0.17) / 0.15, 0, 1)) : 1 - smooth(clampN((d + 0.02) / 0.11, 0, 1));
+    let qBody = null, shW = null;
+    if (aimOn) {
+      qBody = qY.setFromAxisAngle(YAXIS, this.yaw + this.faceRot).clone(); // 身體座標 → 世界
+      shW = new THREE.Vector3(); B.rU.getWorldPosition(shW);
+      const toBall = new THREE.Vector3(cp.x - shW.x, cp.y - shW.y, cp.z - shW.z).applyQuaternion(qBody.clone().invert()).normalize();
+      arms.rU.lerp(toBall, 0.2 * aimW).normalize(); arms.rF.lerp(toBall, 0.35 * aimW).normalize();
+    }
     this.aimChain(B.rU, B.rF, B.rH, REST_R_ARM, arms.rU, arms.rF, chestQ, false, pose.tw || 0);
     B.rH.rotation.set(0, pose.wY || 0, pose.wZ || 0); // 手腕：扣腕／甩腕
+    // 拍頭找球：擊球前後一瞬間，手腕轉向讓拍頭真的打到球（低球手腕往下壓、高球往上翹）
+    // 原本手腕只照關鍵格擺，拍子和前臂的夾角整個揮拍都差不多（實測 41～47°），挑球時拍頭還停在球上方 30 公分
+    if (aimOn) {
+      const w = aimW, sh = shW;
+      const hand = sh.clone().add(arms.rU.clone().multiplyScalar(this.armU).add(arms.rF.clone().multiplyScalar(this.armF)).applyQuaternion(qBody));
+      const tgt = new THREE.Vector3(cp.x - hand.x, cp.y - hand.y, cp.z - hand.z).applyQuaternion(qBody.clone().invert());
+      const near = clampN((tgt.length() - 0.15) / 0.25, 0, 1); // 球已經在手邊（站太近）：手腕不硬轉（不然拍子會翻起來）
+      if (near > 0) {
+        // 只用手腕真的會動的兩個方向：前後扣（wZ，約 ±75°）、往拇指側／小指側（wY，拇指側約 25°、小指側約 40°）
+        // 拍子方向 a＝RACKET_AXIS；在前臂座標裡要 Ry(wY)·Rz(wZ)·a 指向球
+        // 不夠的話前臂再內旋／外旋一點（dt，最多約 ±70°）：三個角度一起找「手腕最省力」的組合
+        const armQ = chestQ.clone().multiply(B.rU.quaternion).multiply(B.rF.quaternion);
+        const t0 = tgt.normalize().applyQuaternion(armQ.clone().invert()); // 前臂座標裡，球在手的哪個方向
+        const c = -RACKET_AXIS.x, s = RACKET_AXIS.z;
+        let best = null;
+        for (let dt = -1.2; dt <= 1.21; dt += 0.1) {
+          const cs = Math.cos(dt), sn = Math.sin(dt), ty = t0.y * cs - t0.z * sn, tz = t0.y * sn + t0.z * cs; // 前臂多轉 dt 之後，球的方向
+          const r = -ty / c, over = Math.max(0, Math.abs(r) - 1);
+          const wZ = Math.asin(clampN(r, -1, 1));
+          let wY = Math.atan2(t0.x, tz) - Math.atan2(-c * Math.cos(wZ), s);
+          wY = Math.atan2(Math.sin(wY), Math.cos(wY));
+          const exY = Math.max(0, wY - 0.45, -0.7 - wY), exZ = Math.max(0, Math.abs(wZ) - 1.3);
+          const cost = wY * wY + 0.6 * wZ * wZ + 0.5 * dt * dt + 12 * (exY * exY + exZ * exZ + over * over);
+          if (!best || cost < best.cost) best = { cost, dt, wY: clampN(wY, -0.7, 0.45), wZ: clampN(wZ, -1.3, 1.3) };
+        }
+        this.__aim = { kind, d, ...best }; // 測試用
+        const k = w * near;
+        if (Math.abs(best.dt) > 0.01) this.aimChain(B.rU, B.rF, B.rH, REST_R_ARM, arms.rU, arms.rF, chestQ, false, (pose.tw || 0) + best.dt * k);
+        B.rH.rotation.set(0, (pose.wY || 0) * (1 - k) + best.wY * k, (pose.wZ || 0) * (1 - k) + best.wZ * k);
+      }
+    }
     this.aimChain(B.lU, B.lF, B.lH, REST_L_ARM, arms.lU, arms.lF, chestQ, false, pose.ltw || 0); // ltw：非持拍手前臂轉（手心朝哪）
     B.lH.rotation.set(0, 0, -0.15);
     for (const [n, c] of this.fingers) n.rotation.set(0, 0, c);

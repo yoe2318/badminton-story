@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=170';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=170';
-import { attachGesture, chargeOf } from './gesture.js?v=170';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=170';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=170';
-import { buildArena } from './arena.js?v=170';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=171';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=171';
+import { attachGesture, chargeOf } from './gesture.js?v=171';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=171';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=171';
+import { buildArena } from './arena.js?v=171';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -309,9 +309,10 @@ function standFor(a, c) {
     return { x: c.x + dx / d * keep * 0.85 - lat * a.side * 0.9, z: c.z + dz / d * keep, lat };
   }
   const s = a.side, over = c.y >= 2.2, low = !over && (c.y < 1.0 || (c.y < 1.7 && Math.abs(c.z) < 2.8));
-  const fwd = over ? 0.2 : low ? 0.7 : 0.35;
+  const fwd = over ? 0.2 : low ? 0.85 : 0.3;
   const mk = lat => ({ x: clamp(c.x - lat * s, -3.6, 3.6), z: clamp(c.z + fwd * s, -7.6, 7.6), lat });
-  const F = mk(over ? 0.3 : low ? 0.45 : 0.55), B = mk(low ? -0.45 : -0.55);
+  // 球離身體要有「手臂＋拍子」的距離（原本平抽站 0.55 m，手直接碰到球、拍頭沒地方伸）
+  const F = mk(over ? 0.3 : low ? 0.55 : 1.0), B = mk(low ? -0.55 : -0.95);
   const dF = Math.hypot(F.x - a.pos.x, F.z - a.pos.z), dB = Math.hypot(B.x - a.pos.x, B.z - a.pos.z);
   // 來得及嗎：起動 0.2 秒＋平均約 3 m/s
   const tAvail = c.t !== undefined ? c.t - simT : 9, can = d => 0.2 + d / 3.0 <= tAvail;
@@ -488,7 +489,7 @@ function hit(a, key, o) {
   if (!ATTACK_KEYS.has(key) && !(rearScissor(shuttle.p) && ['clear', 'aclear', 'fastdrop', 'slowdrop', 'slicedrop'].includes(key))) a.jumpH = 0; // 不是殺球就不跳（後場頭頂球的小跳例外）
   a.lunge = !spec.serve && shuttle.p.y < 2.2 && Math.hypot(shuttle.p.x - a.pos.x, shuttle.p.z - a.pos.z) > 0.8;
   a.lungeAt = relOf(a, shuttle.p);
-  a.contactP = { x: shuttle.p.x, z: shuttle.p.z };
+  a.contactP = { x: shuttle.p.x, y: shuttle.p.y, z: shuttle.p.z };
   if (key === 'lift' && ['net', 'bnet', 'under', 'bunder', 'side', 'bside'].includes(a.swingKind)) a.swingKind = a.swingKind[0] === 'b' ? 'blift' : 'lift'; // 挑球：專用動作（下手往上甩、收拍舉過頭）
   if (key === 'kill' && !o.fancy) { a.swingKind = relOf(a, shuttle.p).lat >= -0.15 ? 'kill' : 'bkill'; a.aimP = { ...shuttle.p }; } // 撲球：專用動作、手臂對準球
   a.killBrush = key === 'kill' && inTumble; // 刷撲
@@ -523,7 +524,7 @@ function hit(a, key, o) {
     opp.reactAt = simT + D.react + (o.hold ? 0.3 : 0) + (spec.tumble ? 0.1 : 0) + 0.1 * tiredOf(opp);
     const out = !inBounds(res.sim.land.x, res.sim.land.z, opp.side, spec.serve, a.pos.x);
     opp.letGo = out && Math.random() < D.readOut;
-    if (!opp.letGo) { opp.swingT = opp.plan.t; opp.low = opp.plan.kind !== 'high'; opp.jumpT = opp.plan.t; opp.jumpRise = 0.275; opp.swingKind = strokeOf({ pos: opp.stand, side: opp.side }, opp.plan); aiPreChoose(opp); opp.contactP = { x: opp.plan.x, z: opp.plan.z }; opp.lungeAt = relOf({ pos: opp.stand, side: opp.side }, opp.plan); opp.lunge = opp.plan.y < 2.2 && Math.hypot(opp.plan.x - opp.stand.x, opp.plan.z - opp.stand.z) > 0.8; }
+    if (!opp.letGo) { opp.swingT = opp.plan.t; opp.low = opp.plan.kind !== 'high'; opp.jumpT = opp.plan.t; opp.jumpRise = 0.275; opp.swingKind = strokeOf({ pos: opp.stand, side: opp.side }, opp.plan); aiPreChoose(opp); opp.contactP = { x: opp.plan.x, y: opp.plan.y, z: opp.plan.z }; opp.lungeAt = relOf({ pos: opp.stand, side: opp.side }, opp.plan); opp.lunge = opp.plan.y < 2.2 && Math.hypot(opp.plan.x - opp.stand.x, opp.plan.z - opp.stand.z) > 0.8; }
   }
   if (opp.plan && !opp.letGo) planFootwork(opp);
   if (dbl()) doublesPositions(a, key, opp);
@@ -702,7 +703,7 @@ function humanSwing(g) {
   me.swingT = simT + 0.05;
   me.low = shuttle.p.y < 1.6;
   me.swingKind = strokeOf(me, shuttle.p);
-  me.contactP = { x: shuttle.p.x, z: shuttle.p.z };
+  me.contactP = { x: shuttle.p.x, y: shuttle.p.y, z: shuttle.p.z };
   me.lungeAt = relOf(me, shuttle.p);
   me.lunge = shuttle.p.y < 2.2 && Math.hypot(shuttle.p.x - me.pos.x, shuttle.p.z - me.pos.z) > 0.8;
   // 起跳＝要殺球：先用手勢判斷會打出什麼球，不是殺球就不跳
@@ -716,7 +717,7 @@ function humanSwing(g) {
   let waitKill = 0;
   if (kp && g.dir === 'up' && !g.crouch) { // 撲球機會、提早往上滑：等球到撲球點再出手
     const early = me.plan.t - simT;
-    if (early > 0.05 && early < 0.8) { waitKill = early; k0 = 'kill'; me.contactP = { x: me.plan.x, z: me.plan.z }; me.lungeAt = relOf(me, me.plan); me.swingKind = me.lungeAt.lat >= -0.15 ? 'kill' : 'bkill'; me.lunge = true; }
+    if (early > 0.05 && early < 0.8) { waitKill = early; k0 = 'kill'; me.contactP = { x: me.plan.x, y: me.plan.y, z: me.plan.z }; me.lungeAt = relOf(me, me.plan); me.swingKind = me.lungeAt.lat >= -0.15 ? 'kill' : 'bkill'; me.lunge = true; }
   }
   if (k0 === 'kill') me.aimP = waitKill ? { x: me.plan.x, y: me.plan.y, z: me.plan.z } : { ...shuttle.p }; // 手臂和拍子要對準的點
   const killJump = k0 === 'kill' && me.aimP && me.aimP.y > 2.3; // 高的撲球：往前小跳、在最高點撲
@@ -941,7 +942,7 @@ function replanKill(a) {
     a.stand = standFor(a, a.plan);
     if (auto(a)) {
       a.swingT = a.plan.t; a.low = false; a.jumpT = a.plan.t; a.jumpRise = 0.275;
-      a.contactP = { x: q.x, z: q.z }; a.lungeAt = relOf({ pos: a.stand, side: a.side }, a.plan); a.lunge = false;
+      a.contactP = { x: q.x, y: q.y, z: q.z }; a.lungeAt = relOf({ pos: a.stand, side: a.side }, a.plan); a.lunge = false;
       a.swingKind = strokeOf({ pos: a.stand, side: a.side }, a.plan); aiPreChoose(a);
     }
     planFootwork(a);
@@ -1542,7 +1543,8 @@ function drillTick() {
     pl.t = simT; a.stand = standFor(a, { ...pl, t: simT + 9 });
     pl.t = simT + clamp(0.35 + Math.hypot(a.stand.x - a.pos.x, a.stand.z - a.pos.z) / 3.6, 0.6, 1.6);
     a.plan = pl; a.letGo = false; a.reactAt = simT; a.splitT = simT - 0.05;
-    a.swingKind = strokeOf({ pos: a.stand, side: a.side }, pl); a.contactP = { x: pl.x, z: pl.z }; a.swingT = pl.t; // 跟電腦一樣：出發時就知道什麼時候、用什麼動作打
+    a.swingKind = strokeOf({ pos: a.stand, side: a.side }, pl); a.contactP = { x: pl.x, y: pl.y, z: pl.z }; a.swingT = pl.t; // 跟電腦一樣：出發時就知道什麼時候、用什麼動作打
+    if (pt.key === 'lift' && ['net', 'bnet', 'under', 'bunder', 'side', 'bside'].includes(a.swingKind)) a.swingKind = a.swingKind[0] === 'b' ? 'blift' : 'lift'; // 一開始就用挑球的準備動作（手腕先往下壓）
     a.jumpH = pt.jump ? 0.6 : Math.max(SHOTS[pt.key].big ? clamp((pt.y - 2.6) * 0.8, 0, 0.4) : 0, rearScissor(pt)); a.jumpT = pl.t; a.jumpRise = 0.275;
     planFootwork(a);
   }
@@ -1551,7 +1553,7 @@ function drillTick() {
     a.plan = null; a.swingT = simT; a.low = pt.y < 1.6; a.lastKey = pt.key;
     a.swingKind = strokeOf(a, pl);
     if (pt.key === 'lift' && ['net', 'bnet', 'under', 'bunder', 'side', 'bside'].includes(a.swingKind)) a.swingKind = a.swingKind[0] === 'b' ? 'blift' : 'lift';
-    a.lunge = pt.y < 2.2 && Math.hypot(pl.x - a.pos.x, pl.z - a.pos.z) > 0.8; a.lungeAt = relOf(a, pl); a.contactP = { x: pl.x, z: pl.z };
+    a.lunge = pt.y < 2.2 && Math.hypot(pl.x - a.pos.x, pl.z - a.pos.z) > 0.8; a.lungeAt = relOf(a, pl); a.contactP = { x: pl.x, y: pl.y, z: pl.z };
     if (!SHOTS[pt.key].big && !rearScissor(pt)) a.jumpH = 0;
     a.base = { ...drill.base };
     if (pt.jump) { a.fw = planJumpFollow(a, a.base, simT, 0.32); }
