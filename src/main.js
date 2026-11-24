@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=171';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=171';
-import { attachGesture, chargeOf } from './gesture.js?v=171';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=171';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=171';
-import { buildArena } from './arena.js?v=171';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=172';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=172';
+import { attachGesture, chargeOf } from './gesture.js?v=172';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=172';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=172';
+import { buildArena } from './arena.js?v=172';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -118,12 +118,12 @@ function makeRacket() {
   const fr = new THREE.Mesh(new THREE.TorusGeometry(1, 0.0042 / a, 6, 48), mat(0x1c1c1c)); fr.scale.set(a, b, a); fr.position.y = hy; g.add(fr);
   // T 頭（拍框和拍桿接起來的地方）
   const throat = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.005, 0.05, 6), mat(0x1c1c1c)); throat.position.y = hy - b - 0.015; g.add(throat);
-  // 拍線：縱橫交錯的細線
   const pts = [];
-  for (let i = -10; i <= 10; i++) { const x = i / 10.5 * a, h = b * Math.sqrt(Math.max(0, 1 - (x / a) ** 2)); pts.push(x, hy - h, 0, x, hy + h, 0); }
-  for (let j = -12; j <= 12; j++) { const y = j / 12.5 * b, w = a * Math.sqrt(Math.max(0, 1 - (y / b) ** 2)); pts.push(-w, hy + y, 0, w, hy + y, 0); }
+  // 拍線：線比較疏、半透明（原本 21×25 條白線，遠一點就糊成一整片白色，看不出是拍線）
+  for (let i = -6; i <= 6; i++) { const x = i / 6.6 * a, h = b * Math.sqrt(Math.max(0, 1 - (x / a) ** 2)); pts.push(x, hy - h, 0, x, hy + h, 0); }
+  for (let j = -7; j <= 7; j++) { const y = j / 7.6 * b, w = a * Math.sqrt(Math.max(0, 1 - (y / b) ** 2)); pts.push(-w, hy + y, 0, w, hy + y, 0); }
   const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  g.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xf2f2f2, transparent: true, opacity: 0.75 })));
+  g.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xe8e8e8, transparent: true, opacity: 0.45 })));
   return g;
 }
 
@@ -952,6 +952,8 @@ function replanKill(a) {
 
 function planFootwork(a) {
   const pl = a.plan, S = a.stand;
+  // 魚躍還趴在地上：等撐起來再出發，而且直接去追球（不先回中間）
+  if (a.pendingRecover && simT < a.pendingRecover) { a.reactAt = Math.max(a.reactAt || simT, a.pendingRecover); a.pendingRecover = 0; a.fw = null; }
   // 正在踩的那一步要保留，新的步法從那一步結束後接上
   let keep = null;
   if (a.fw) keep = a.fw.moves.find(m => simT >= m.t0 && simT < m.t0 + m.dur) || null;
@@ -980,7 +982,11 @@ function planFootwork(a) {
 
 function moveActors() {
   for (const a of actors) {
-    if (a.pendingRecover && simT >= a.pendingRecover) { a.pendingRecover = 0; a.fw = planRecover(a, a.base, simT, true); }
+    if (a.pendingRecover && simT >= a.pendingRecover) { // 魚躍起來：球已經回來了就直接去追球，還沒回來才回中間
+      a.pendingRecover = 0;
+      if (a.plan && !a.letGo && phase === 'rally') { a.stand = standFor(a, a.plan); planFootwork(a); }
+      else a.fw = planRecover(a, a.base, simT, true);
+    }
     if (a.fw) { // 照排好的步法走：身體由每一步帶著
       const px = a.pos.x, pz = a.pos.z, b = bodyAt(a.fw, simT);
       if (phase === 'rally') staminaMove(a, Math.hypot(b.x - px, b.z - pz));
