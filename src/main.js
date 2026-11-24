@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=190';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=190';
-import { attachGesture, chargeOf } from './gesture.js?v=190';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=190';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=190';
-import { buildArena } from './arena.js?v=190';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=191';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=191';
+import { attachGesture, chargeOf } from './gesture.js?v=191';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=191';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=191';
+import { buildArena } from './arena.js?v=191';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -867,9 +867,11 @@ window.__call = () => call; // 測試用
 let hawk = null;
 const hawkTrail = new THREE.Line(new THREE.BufferGeometry(), noOutline(new THREE.LineBasicMaterial({ color: 0xffe14d })));
 hawkTrail.visible = false; scene.add(hawkTrail);
-const hawkMark = new THREE.Mesh(new THREE.CircleGeometry(BASE_R, 24), noOutline(new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.9, depthWrite: false })));
+const hawkMark = new THREE.Mesh(new THREE.CircleGeometry(BASE_R, 24), noOutline(new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false })));
+hawkMark.renderOrder = 10; // 從正上方看時，印子畫在球的上面（不會被羽毛蓋住）
 hawkMark.rotation.x = -Math.PI / 2; hawkMark.visible = false; scene.add(hawkMark);
-const hawkRing = new THREE.Mesh(new THREE.RingGeometry(BASE_R * 1.8, BASE_R * 2.8, 32), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })));
+const hawkRing = new THREE.Mesh(new THREE.RingGeometry(BASE_R * 1.8, BASE_R * 2.8, 32), noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false })));
+hawkRing.renderOrder = 9;
 hawkRing.rotation.x = -Math.PI / 2; hawkRing.visible = false; scene.add(hawkRing);
 // 落地那一刻的球路＋落點（挑戰制可能過 1～2 秒才看，要先存起來）
 function snapFlight() { const t = flight.length ? flight[flight.length - 1].t : simT; return { land: { x: shuttle.p.x, z: shuttle.p.z }, pts: flight.filter(q => q.t >= t - 0.9).map(q => ({ ...q })) }; }
@@ -877,11 +879,12 @@ function startHawk(lc, isIn, onDone, snap) {
   const { land, pts } = snap || snapFlight();
   if (pts.length < 2) { if (onDone) onDone(); return; }
   hawk = { el: 0, onDone, lc, isIn, land, pts, banner: $('#banner').textContent, color: $('#banner').style.color };
-  if (!onDone) phaseT = Math.max(phaseT, simT + 4.2); // 鷹眼看完才發下一球
+  if (!onDone) phaseT = Math.max(phaseT, simT + HAWK_END + 0.4); // 鷹眼看完（含正上方的畫面）才發下一球
   $('#banner').textContent = '鷹眼重播…'; $('#banner').style.color = '#fff'; $('#banner').style.top = '18%'; // 字放上面，不擋住落點
   hawkMark.material.color.set(isIn ? 0x34c759 : 0xff3b30);
 }
-const HAWK_PLAY = 1.8, HAWK_END = 4.0; // 球路慢動作重播 1.8 秒，判定結果停到 4 秒
+const HAWK_PLAY = 1.8, HAWK_END = 5.2; // 球路慢動作 1.8 秒 → 鏡頭升到正上方約 1 秒 → 判定停一下
+const smooth01 = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }; // 球路慢動作重播 1.8 秒，判定結果停到 4 秒
 function renderHawk(rdt) {
   if (!hawk) return;
   const el = (hawk.el += rdt);
@@ -889,6 +892,7 @@ function renderHawk(rdt) {
   if (el > HAWK_END || (phase !== 'point' && phase !== 'review')) {
     if (phase === 'point') { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; }
     $('#banner').style.top = '';
+    camera.up.set(0, 1, 0);
     const done = hawk.onDone; hawk = null; hawkTrail.visible = hawkMark.visible = hawkRing.visible = false;
     showActors(true); if (!drill) shuttleMesh.visible = true;
     if (done && phase === 'review') done();
@@ -901,8 +905,20 @@ function renderHawk(rdt) {
   let pos, at = new THREE.Vector3(land.x, 0, land.z);
   if (lc.axis === 'x') pos = new THREE.Vector3(lc.v + Math.sign(lc.v || 1) * 0.12, 0.32, land.z + zIn * 0.75); // 邊線：沿著線、從落點後面低低地看
   else pos = new THREE.Vector3(land.x + (land.x > 0 ? -0.75 : 0.75), 0.32, lc.v + Math.sign(lc.v) * 0.12);       // 底線／發球線：從旁邊沿著線看
-  const zoom = Math.min(1, el / 0.6); // 先拉近
-  camera.position.lerp(pos, 0.25 + 0.75 * zoom); camera.lookAt(at);
+  // 球落地後：鏡頭升到落點正上方往下看（線和球頭印子的距離一目了然）
+  const k2 = smooth01((el - HAWK_PLAY - 0.25) / 1.0);
+  const top = new THREE.Vector3(land.x, 0.6, land.z);
+  const lineUp = lc.axis === 'x' ? new THREE.Vector3(0, 0, -zIn) : new THREE.Vector3(land.x > 0 ? -1 : 1, 0, 0); // 正上方時畫面的「上」沿著線（線在畫面上是直的）
+  if (k2 <= 0) {
+    const zoom = Math.min(1, el / 0.6); // 先拉近
+    camera.up.set(0, 1, 0);
+    camera.position.lerp(pos, 0.25 + 0.75 * zoom);
+  } else {
+    const p2 = pos.clone().lerp(top, k2); p2.y += Math.sin(Math.PI * k2) * 0.15; // 弧線升上去
+    camera.position.copy(p2);
+    camera.up.set(0, 1, 0).lerp(lineUp, k2).normalize();
+  }
+  camera.lookAt(at);
   // 球路：慢動作畫出最後一段，球跟著走
   const u = Math.min(1, el / HAWK_PLAY), n = Math.max(2, Math.ceil(pts.length * u));
   const sub = pts.slice(0, n), last = sub[sub.length - 1];
@@ -925,8 +941,8 @@ function renderHawk(rdt) {
     // 線寬 4 cm 算在場內：球頭有碰到線＝壓線；完全在線內側＝界內（離線多少）；整個在線外＝出界
     const LW = 0.04, onLine = hawk.isIn && lc.m <= LW + 2 * BASE_R;
     const detail = !hawk.isIn ? `球頭離${lc.name} ${mm} mm` : onLine ? `球頭壓到${lc.name}` : `離${lc.name}內緣 ${Math.round((lc.m - LW - 2 * BASE_R) * 1000)} mm`;
-    $('#banner').innerHTML = `鷹眼・${hawk.isIn ? (onLine ? '壓線 IN' : '界內 IN') : '出界 OUT'}<br><small style="font-size:16px">${detail}</small>`;
-    $('#banner').style.color = hawk.isIn ? '#7dff9a' : '#ff8a80';
+    if (k2 > 0.8) $('#banner').innerHTML = `鷹眼・${hawk.isIn ? (onLine ? '壓線 IN' : '界內 IN') : '出界 OUT'}<br><small style="font-size:16px">${detail}</small>`;
+    if (k2 > 0.8) $('#banner').style.color = hawk.isIn ? '#7dff9a' : '#ff8a80';
     if (el > HAWK_END - 0.5 && !hawk.onDone) { $('#banner').textContent = hawk.banner; $('#banner').style.color = hawk.color; $('#banner').style.top = ''; }
   }
 }
