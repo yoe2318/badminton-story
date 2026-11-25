@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1103';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1103';
-import { attachGesture, chargeOf } from './gesture.js?v=1103';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1103';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1103';
-import { buildArena } from './arena.js?v=1103';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1103';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1104';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1104';
+import { attachGesture, chargeOf } from './gesture.js?v=1104';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1104';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1104';
+import { buildArena } from './arena.js?v=1104';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1104';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -560,7 +560,7 @@ function hit(a, key, o) {
   phase = 'rally';
   const kmh = Math.round(Math.hypot(res.v.x, res.v.y, res.v.z) * 3.6);
   const feel = feelOf(key);
-  sfx(key, a, kmh); hitFlash(shuttle.p, feel); rallyHits++;
+  sfx(key, a, kmh, o.quality); hitFlash(shuttle.p, feel); rallyHits++;
   if (o.fancy === 'dive') squeak(a, 0.3, 1.1); // 魚躍：撲出去落地滑一下
   else if (spec.jump) squeak(a, 0.42); // 跳殺落地
   else if (a.lunge) squeak(a, 0, 0.9); // 跨步：前腳腳跟煞住
@@ -1382,17 +1382,42 @@ function loadHitSounds() {
   const wet = actx.createGain(); wet.gain.value = 0.55; gymVerb.connect(wet).connect(audioOut());
 }
 // 每種球的聲音：用哪幾個錄音、音量、音高（播放速度）、濾波、回音多寡
+// gain＝這種球打到最用力（球速到 v[1]）時的音量；越輕越小聲，最小到 floor 倍（先定最大聲、往下調；輸出有限幅不會破音）
 const HIT_SND = {
-  heavy: { bank: ['b1', 'b2', 'b3'], gain: 0.85, rate: [0.98, 1.06], wet: 0.6, thump: [120, 0.09, 0.35] },      // 殺球：最響最脆、回音大、帶一點低頻的「力」
-  clear: { bank: ['m1', 'b3', 'b2'], gain: 0.78, rate: [0.88, 0.95], wet: 0.55, thump: [150, 0.06, 0.12] },    // 高遠：紮實、比殺球悶一點
-  drive: { bank: ['b1', 'b2', 'b3'], gain: 0.62, rate: [1.06, 1.14], wet: 0.3 },                               // 平抽、撲球、推球：短、脆
-  lift: { bank: ['m1', 'd1'], gain: 0.55, rate: [0.95, 1.02], wet: 0.45 },                                      // 挑球
-  drop: { bank: ['d1', 'd2'], gain: 0.38, rate: [1.0, 1.08], wet: 0.4, lp: 3800 },                             // 吊球：輕、悶
-  net: { bank: ['d1', 'd2', 'm1'], gain: 0.2, rate: [1.25, 1.38], wet: 0.25, hp: 1200 },                        // 網前小球：很輕的「噠」
+  heavy: { bank: ['b1', 'b2', 'b3'], gain: 1.0, rate: [0.9, 0.97], wet: 0.85, v: [150, 420], floor: 0.45 },    // 殺球：最響最脆、回音大（另外疊重擊層，見 smashLayers）
+  clear: { bank: ['m1', 'b3', 'b2'], gain: 0.8, rate: [0.88, 0.95], wet: 0.55, thump: [150, 0.06, 0.14], v: [90, 230], floor: 0.5 }, // 高遠：紮實、比殺球悶一點
+  drive: { bank: ['b1', 'b2', 'b3'], gain: 0.7, rate: [1.06, 1.14], wet: 0.3, v: [70, 220], floor: 0.45 },     // 平抽、撲球、推球：短、脆
+  lift: { bank: ['m1', 'd1'], gain: 0.6, rate: [0.95, 1.02], wet: 0.45, v: [50, 170], floor: 0.45 },           // 挑球
+  drop: { bank: ['d1', 'd2'], gain: 0.42, rate: [1.0, 1.08], wet: 0.4, lp: 3800, v: [40, 160], floor: 0.45 },  // 吊球：輕、悶
+  net: { bank: ['d1', 'd2', 'm1'], gain: 0.24, rate: [1.25, 1.38], wet: 0.25, hp: 1200, v: [5, 60], floor: 0.4 }, // 網前小球：很輕的「噠」
 };
+// 殺球的震撼感：在錄音之外再疊三層
+//  1. 擊中瞬間更脆的「啪」（高頻爆音 15 ms）  2. 胸口感受到的低頻「碰」（110→45 Hz）  3. 球飛出去的「咻」（風切聲由高往低掃）
+function smashLayers(pf, far, jump) {
+  const t = actx.currentTime, k = far ? 0.4 : 1;
+  noiseHit(0.016, 4500, 0.7, 0.75 * pf * k, 'highpass', 5);
+  if (!far) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.85 * pf * (jump ? 1.2 : 1), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g).connect(audioOut()); o.start(t); o.stop(t + 0.25);
+  }
+  const n = Math.floor(0.38 * actx.sampleRate), b = actx.createBuffer(1, n, actx.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) { const u = i / n; d[i] = (Math.random() * 2 - 1) * Math.min(1, u * 25) * Math.pow(1 - u, 2.2); }
+  const s = actx.createBufferSource(); s.buffer = b;
+  const f = bq('bandpass', 5200, 1.4); f.frequency.setValueAtTime(5200, t); f.frequency.exponentialRampToValueAtTime(1400, t + 0.38);
+  const g = actx.createGain(); g.gain.value = 0.32 * pf * k;
+  s.connect(f).connect(g).connect(audioOut());
+  if (gymVerb) { const w = actx.createGain(); w.gain.value = 0.4; g.connect(w).connect(gymVerb); }
+  s.start(t + 0.02);
+}
 const SND_OF = { smash: 'heavy', jumpsmash: 'heavy', slicesmash: 'heavy', stick: 'heavy', kill: 'heavy', clear: 'clear', aclear: 'clear', lserve: 'clear',
   drive: 'drive', push: 'drive', lift: 'lift', fserve: 'lift', fastdrop: 'drop', slowdrop: 'drop', slicedrop: 'drop', block: 'net', net: 'net', spin: 'net', cross: 'net', sserve: 'net' };
-function hitSample(key, far, kmh) {
+// 每種球「輕～最用力」的球速範圍（km/h，照自動示範實測：殺球 266～301、跳殺 335、突擊約 205、撲球 134～151、高遠 127～228、挑球 59～162、網前 20～36…）
+const SND_V = { smash: [220, 360], jumpsmash: [280, 420], slicesmash: [200, 320], stick: [160, 250], kill: [100, 175],
+  clear: [110, 230], aclear: [120, 200], lserve: [90, 140], drive: [80, 200], push: [40, 90], lift: [50, 170], fserve: [60, 130],
+  fastdrop: [70, 120], slicedrop: [55, 110], slowdrop: [28, 60], block: [22, 50], net: [15, 40], spin: [15, 40], cross: [15, 40], sserve: [32, 50] };
+function hitSample(key, far, kmh, quality) {
   const S = HIT_SND[SND_OF[key] || 'drive'], names = S.bank.filter(n => hitBufs && hitBufs[n]);
   if (!names.length) return false;
   const src = actx.createBufferSource(); src.buffer = hitBufs[names[Math.floor(Math.random() * names.length)]];
@@ -1401,12 +1426,15 @@ function hitSample(key, far, kmh) {
   if (S.lp) node = node.connect(bq('lowpass', S.lp, 0.7));
   if (S.hp) node = node.connect(bq('highpass', S.hp, 0.7));
   if (far) node = node.connect(bq('lowpass', 5200, 0.7)); // 對面場：遠一點、悶一點
-  const speedK = S === HIT_SND.heavy ? clamp(0.75 + (kmh - 200) / 400, 0.75, 1.15) : 1; // 殺得越快越響
-  const g = actx.createGain(); g.gain.value = S.gain * speedK * (far ? 0.55 : 1) * rand(0.92, 1.05);
+  // 力道：這一拍的球速在這種球的範圍裡算多用力（0～1）；打得勉強的（poor）再小聲一點
+  const V = SND_V[key] || S.v, pf = clamp((kmh - V[0]) / (V[1] - V[0]), 0, 1) * (quality === 'poor' ? 0.7 : 1);
+  const speedK = S.floor + (1 - S.floor) * pf;
+  const g = actx.createGain(); g.gain.value = S.gain * speedK * (far ? 0.55 : 1) * rand(0.94, 1.03);
   node.connect(g); g.connect(audioOut());
   if (gymVerb) { const w = actx.createGain(); w.gain.value = Math.min(1, S.wet + (far ? 0.2 : 0)); g.connect(w).connect(gymVerb); }
   src.start();
   if (S.thump && !far) thump(S.thump[0], S.thump[1], S.thump[2] * speedK);
+  if (S === HIT_SND.heavy) smashLayers(0.35 + 0.65 * pf, far, key === 'jumpsmash');
   if (key === 'slicesmash' || key === 'slicedrop') noiseHit(0.07, 6500, 1.2, 0.12 * (far ? 0.5 : 1), 'bandpass', 2); // 切：拍面擦過的「嘶」
   if (key === 'spin') noiseHit(0.08, 5200, 3, 0.08, 'bandpass', 1); // 搓球
   return true;
@@ -1415,7 +1443,7 @@ function audioOut() {
   if (!master) {
     master = actx.createGain(); master.gain.value = 1;
     const lim = actx.createDynamicsCompressor(); // 限幅：殺球＋回音疊在一起也不會破音
-    lim.threshold.value = -8; lim.knee.value = 6; lim.ratio.value = 6; lim.attack.value = 0.002; lim.release.value = 0.15;
+    lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.15;
     master.connect(lim).connect(actx.destination);
   }
   return master;
@@ -1549,17 +1577,18 @@ window.__sfx = async (key, far = false, kmh = 300) => {
   ensureAudio(); await new Promise(r => setTimeout(r, 300));
   const an = actx.createAnalyser(); an.fftSize = 2048; audioOut().connect(an);
   const d = new Float32Array(an.fftSize); let pk = 0, ss = 0, n = 0;
-  const ok = hitSample(key, far, kmh), t0 = performance.now();
+  const ok = hitSample(key, far, kmh, 'good'), t0 = performance.now();
   while (performance.now() - t0 < 400) { an.getFloatTimeDomainData(d); for (const v of d) { pk = Math.max(pk, Math.abs(v)); ss += v * v; n++; } await new Promise(r => setTimeout(r, 20)); }
   audioOut().disconnect(an);
   return { ok, bufs: Object.keys(hitBufs || {}).length, peak: +pk.toFixed(3), rms: +Math.sqrt(ss / n).toFixed(4) };
 };
-function sfx(key, a, kmh = 0) {
+function sfx(key, a, kmh = 0, quality) {
   const feel = feelOf(key);
   const mine = !a || a.side === me.side;
   try { if (mine && navigator.vibrate) navigator.vibrate(feel === 'heavy' ? 35 : feel === 'solid' ? 15 : 5); } catch (e) {} // 手機震動（Android）：只有自己這邊擊球才震
   if (!actx) return;
-  if (hitSample(key, !mine, kmh)) return; // 有錄音就用錄音；還沒載入好才用下面的合成聲
+  if (window.__sfxLog) window.__sfxLog.push([key, kmh, quality]); // 測試用
+  if (hitSample(key, !mine, kmh, quality)) return; // 有錄音就用錄音；還沒載入好才用下面的合成聲
   if (feel === 'heavy') { noiseHit(0.035, 4200, 0.7, 1.4, 'highpass', 2); noiseHit(0.07, 1100, 1, 0.9); thump(130, 0.12, 0.7); }
   else if (feel === 'solid') { noiseHit(0.05, 1500, 1.1, 0.85); thump(170, 0.07, 0.3); }
   else { noiseHit(0.025, 2800, 2.2, 0.28, 'bandpass', 4); if (key === 'spin') noiseHit(0.08, 5200, 3, 0.12, 'bandpass', 1); }
