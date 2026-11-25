@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1102';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1102';
-import { attachGesture, chargeOf } from './gesture.js?v=1102';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1102';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1102';
-import { buildArena } from './arena.js?v=1102';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1102';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1103';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1103';
+import { attachGesture, chargeOf } from './gesture.js?v=1103';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1103';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1103';
+import { buildArena } from './arena.js?v=1103';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1103';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1172,7 +1172,7 @@ function moveActors() {
       // 急停換方向（0.15 秒前還在快跑、現在往反方向）：球鞋「吱」一聲
       if (!a.vRef || simT - a.vRef.t > 0.15) {
         const pv = a.vRef || { x: 0, z: 0 }, ps = Math.hypot(pv.x, pv.z), ns = Math.hypot(a.vel.x, a.vel.z);
-        if (phase === 'rally' && ps > 2.0 && ns > 0.8 && (pv.x * a.vel.x + pv.z * a.vel.z) / (ps * ns) < -0.2) squeak(a, 0, 0.8);
+        if (phase === 'rally' && ps > 2.8 && ns > 1.2 && (pv.x * a.vel.x + pv.z * a.vel.z) / (ps * ns) < -0.2) squeak(a, 0, 0.8);
         a.vRef = { x: a.vel.x, z: a.vel.z, t: simT };
       }
       continue;
@@ -1469,8 +1469,8 @@ function applause(level) {
 // 球鞋摩擦聲（跨步、急停、跳起落地）
 // 球鞋摩擦地板的「吱」：真實錄音、小小聲（跨步、急停、跳殺落地、蹬回）；k＝這一下多用力
 function squeak(a, delay = 0, k = 1) {
-  if (!actx || !sqBufs.length || Math.random() < 0.2) return; // 不是每一步都吱
-  if (simT - (a.lastSq || -9) < 0.35) return; a.lastSq = simT;
+  if (!actx || !sqBufs.length || Math.random() < 0.55) return; // 不是每一步都吱（使用者：再少一點，約一半不響）
+  if (simT - (a.lastSq || -9) < 1.0) return; a.lastSq = simT; // 同一人 1 秒內最多一聲
   const near = a.side === me.side ? 1 : 0.5;
   const src = actx.createBufferSource(); src.buffer = sqBufs[Math.floor(Math.random() * sqBufs.length)];
   src.playbackRate.value = rand(0.9, 1.15);
