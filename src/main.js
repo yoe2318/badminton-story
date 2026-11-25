@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1100';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1100';
-import { attachGesture, chargeOf } from './gesture.js?v=1100';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1100';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1100';
-import { buildArena } from './arena.js?v=1100';
-import { HIT_WAVS } from './sfx_data.js?v=1100';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1101';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1101';
+import { attachGesture, chargeOf } from './gesture.js?v=1101';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1101';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1101';
+import { buildArena } from './arena.js?v=1101';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1101';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -561,7 +561,9 @@ function hit(a, key, o) {
   const kmh = Math.round(Math.hypot(res.v.x, res.v.y, res.v.z) * 3.6);
   const feel = feelOf(key);
   sfx(key, a, kmh); hitFlash(shuttle.p, feel); rallyHits++;
-  if (a.lunge) squeak(a, 0); if (spec.jump) squeak(a, 0.42); // 跨步、跳殺落地：球鞋摩擦聲
+  if (o.fancy === 'dive') squeak(a, 0.3, 1.1); // 魚躍：撲出去落地滑一下
+  else if (spec.jump) squeak(a, 0.42); // 跳殺落地
+  else if (a.lunge) squeak(a, 0, 0.9); // 跨步：前腳腳跟煞住
   if (kmh >= 300 && !lesson) roar(0.35, 380); // 很快的殺球：觀眾「喔～」
   hitStop = spec.jump ? 0.02 : feel === 'heavy' ? 0.045 : feel === 'solid' ? 0.02 : 0.006; // 擊球瞬間的停頓：重擊停一下、輕球幾乎不停
   shake = Math.max(shake, feel === 'heavy' ? (spec.jump ? 0.38 : 0.28) : feel === 'solid' ? 0.06 : 0);
@@ -1167,6 +1169,12 @@ function moveActors() {
       a.anim.bob = bobAt(a.fw, simT);
       a.pos.x = b.x; a.pos.z = b.z;
       a.vel = { x: (a.pos.x - px) / DT, z: (a.pos.z - pz) / DT };
+      // 急停換方向（0.15 秒前還在快跑、現在往反方向）：球鞋「吱」一聲
+      if (!a.vRef || simT - a.vRef.t > 0.15) {
+        const pv = a.vRef || { x: 0, z: 0 }, ps = Math.hypot(pv.x, pv.z), ns = Math.hypot(a.vel.x, a.vel.z);
+        if (phase === 'rally' && ps > 2.0 && ns > 0.8 && (pv.x * a.vel.x + pv.z * a.vel.z) / (ps * ns) < -0.2) squeak(a, 0, 0.8);
+        a.vRef = { x: a.vel.x, z: a.vel.z, t: simT };
+      }
       continue;
     }
     a.anim.bob = 0;
@@ -1347,15 +1355,17 @@ function ensureAudio() {
 }
 // ---------- 擊球聲：真實錄音＋球館回音 ----------
 // 錄音：Freesound #497962（CC0），6 個乾淨的擊球；球館的回音用 ConvolverNode 加（體育館殘響約 1.5 秒、高頻衰減比較快）
-let hitBufs = null, gymVerb = null;
+let hitBufs = null, sqBufs = [], gymVerb = null;
 function loadHitSounds() {
   if (hitBufs || !actx) return;
-  hitBufs = {};
-  for (const [k, b64] of Object.entries(HIT_WAVS)) {
+  hitBufs = {}; sqBufs = [];
+  const dec = (b64, done) => {
     const bin = atob(b64), u = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    actx.decodeAudioData(u.buffer).then(b => { hitBufs[k] = b; }).catch(() => {});
-  }
+    actx.decodeAudioData(u.buffer).then(done).catch(() => {});
+  };
+  for (const [k, b64] of Object.entries(HIT_WAVS)) dec(b64, b => { hitBufs[k] = b; });
+  for (const b64 of Object.values(SQUEAK_WAVS)) dec(b64, b => sqBufs.push(b));
   // 球館的殘響：前面幾個早期反射（地板、牆、天花板）＋往後慢慢衰減、越來越悶的尾巴
   const sr = actx.sampleRate, len = Math.floor(1.6 * sr), ir = actx.createBuffer(2, len, sr);
   for (let ch = 0; ch < 2; ch++) {
@@ -1457,15 +1467,20 @@ function applause(level) {
   play(b, [bq('highpass', 700), bq('peaking', 2200, 1)], 0.16 + 0.1 * level);
 }
 // 球鞋摩擦聲（跨步、急停、跳起落地）
-function squeak(a, delay) {
-  if (!EXTRA_SFX || !actx || Math.random() < 0.25) return;
-  const near = a.side === me.side ? 1 : 0.45, t = actx.currentTime + delay, len = 0.07 + Math.random() * 0.08;
-  const o = actx.createOscillator(), g = actx.createGain(), f0 = 1500 + Math.random() * 900;
-  o.type = 'triangle';
-  const curve = new Float32Array(16); for (let i = 0; i < 16; i++) curve[i] = f0 * (1 + 0.35 * i / 15) + 120 * Math.sin(i * 2.2);
-  o.frequency.setValueCurveAtTime(curve, t, len);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05 * near, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  o.connect(bq('bandpass', 2200, 1.5)).connect(g).connect(audioOut()); o.start(t); o.stop(t + len + 0.02);
+// 球鞋摩擦地板的「吱」：真實錄音、小小聲（跨步、急停、跳殺落地、蹬回）；k＝這一下多用力
+function squeak(a, delay = 0, k = 1) {
+  if (!actx || !sqBufs.length || Math.random() < 0.2) return; // 不是每一步都吱
+  if (simT - (a.lastSq || -9) < 0.35) return; a.lastSq = simT;
+  const near = a.side === me.side ? 1 : 0.5;
+  const src = actx.createBufferSource(); src.buffer = sqBufs[Math.floor(Math.random() * sqBufs.length)];
+  src.playbackRate.value = rand(0.9, 1.15);
+  const g = actx.createGain(); g.gain.value = 0.11 * near * k * rand(0.8, 1.1);
+  let node = src.connect(bq('highpass', 700, 0.7));
+  if (near < 1) node = node.connect(bq('lowpass', 4500, 0.7));
+  node.connect(g).connect(audioOut());
+  if (gymVerb) { const w = actx.createGain(); w.gain.value = 0.35; g.connect(w).connect(gymVerb); }
+  src.start(actx.currentTime + delay);
+  if (window.__sqLog) window.__sqLog.push(k); // 測試用
 }
 // 球打到網子：網子晃動的悶聲
 function netSound() { if (EXTRA_SFX && actx) { noiseHit(0.16, 260, 0.7, 0.55, 'lowpass', 2); noiseHit(0.05, 1300, 1, 0.12); } }
