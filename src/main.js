@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=191';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=191';
-import { attachGesture, chargeOf } from './gesture.js?v=191';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=191';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=191';
-import { buildArena } from './arena.js?v=191';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=192';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=192';
+import { attachGesture, chargeOf } from './gesture.js?v=192';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=192';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=192';
+import { buildArena } from './arena.js?v=192';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -296,9 +296,21 @@ function reachOf(a, p) {
   return { d, R, ok: d <= R && p.y <= TOP && p.y >= 0.08, ...r };
 }
 // 揮拍種類：看球在身體哪一邊、多高
+// 單打回位：不是一律回中心，看剛打的是什麼球（單位：離網幾公尺）
+//  高遠、挑球 → 中間偏後（對手在後場，時間多、要防下一拍的後場球）
+//  吊球、殺球 → 中間偏前（對手多半擋網、挑球，要準備上網撲）
+//  放網、搓球 → 留在前面封網（對手回高就撲）
+// 左右：往球落點那一側偏——對手最容易打直線，站在「對手所有回球角度的中線」上；對手在後場時角度差比較大，偏多一點
+const BASE_DEPTH = { net: 2.0, spin: 2.0, cross: 2.1, kill: 2.0, push: 2.6, stick: 2.6, sserve: 2.6, smash: 2.7, jumpsmash: 2.6, slicesmash: 2.7,
+  block: 2.8, slowdrop: 2.9, slicedrop: 2.9, fastdrop: 3.0, drive: 3.1, aclear: 3.4, clear: 3.6, lserve: 3.6, fserve: 3.6, lift: 3.8 };
+function singlesBase(a, key, land) {
+  const k = Math.abs(land.z) > 4.5 ? 0.24 : 0.18;
+  return { x: clamp(land.x * k, -0.6, 0.6), z: a.side * (BASE_DEPTH[key] ?? 3.3) };
+}
 function strokeOf(a, p) {
   const { lat } = relOf(a, p);
-  if (p.y >= 2.2) return lat >= -0.15 ? 'over' : lat >= -0.6 ? 'rth' : 'bover';
+  // 雙打後場：左後場也盡量繞頭頂用正手殺（力量大、看得清楚、殺完馬上往前），真的太偏才用反手
+  if (p.y >= 2.2) return lat >= -0.15 ? 'over' : lat >= (dbl() ? -0.95 : -0.6) ? 'rth' : 'bover';
   if (p.y < 1.7 && Math.abs(p.z) < 2.8) return lat >= 0 ? 'net' : 'bnet'; // 網前
   if (p.y >= 1.0) return lat >= 0 ? 'side' : 'bside';
   return lat >= 0 ? 'under' : 'bunder';
@@ -321,7 +333,7 @@ function standFor(a, c) {
   if (over) {
     const R = mk(-0.35), dR = Math.hypot(R.x - a.pos.x, R.z - a.pos.z), Bo = mk(-0.85);
     if (dF <= dB + 0.6 && can(dF)) return F;      // 跑得到：正手
-    if (dR <= dB + 0.6 && can(dR)) return R;      // 偏左一點：頭頂
+    if (dR <= dB + (dbl() ? 1.6 : 0.6) && can(dR)) return R; // 偏左一點：頭頂（雙打幾乎一律繞頭頂用正手）
     return Bo;                                    // 來不及繞過去：反手頭頂（背對網）
   }
   if (can(dF) && dF <= dB + 0.4) return F;
@@ -511,8 +523,7 @@ function hit(a, key, o) {
   if (key === 'kill' && !o.fancy) { a.swingKind = relOf(a, shuttle.p).lat >= -0.15 ? 'kill' : 'bkill'; a.aimP = { ...shuttle.p }; } // 撲球：專用動作、手臂對準球
   a.killBrush = key === 'kill' && inTumble; // 刷撲
   const smartBase = !lesson && (!auto(a) || dOf(a).tactic > 0);
-  const bz = !smartBase ? 3.4 : ['net', 'spin', 'cross', 'kill'].includes(key) ? 1.7 : ['smash', 'jumpsmash', 'slicesmash'].includes(key) ? 2.6 : ['block', 'slowdrop', 'slicedrop', 'stick', 'sserve'].includes(key) ? 2.4 : ['lift', 'clear', 'lserve', 'fserve'].includes(key) ? 3.8 : 3.4; // 放網後往前封網，對手回高就能撲
-  a.base = { x: smartBase ? clamp(-shuttle.p.x * 0.15, -0.4, 0.4) : 0, z: a.side * bz }; a.coolUntil = simT + 0.25;
+  a.base = smartBase ? singlesBase(a, key, res.sim.land) : { x: 0, z: a.side * 3.4 }; a.coolUntil = simT + 0.25;
   // 打完回位：跨步的話先蹬回來；跳殺要等落地
   if (o.fancy === 'dive') { // 魚躍：朝球的方向低低地飛出去，趴一下、撐起來站好（停在落地的地方，不會回到原地）
     const L = a.lungeAt, yawD = clamp(Math.atan2(-L.lat, Math.max(0.2, L.fwd)), -1.3, 1.3), s = a.side;
