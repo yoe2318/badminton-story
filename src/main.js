@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1101';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1101';
-import { attachGesture, chargeOf } from './gesture.js?v=1101';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1101';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1101';
-import { buildArena } from './arena.js?v=1101';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1101';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1102';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1102';
+import { attachGesture, chargeOf } from './gesture.js?v=1102';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1102';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1102';
+import { buildArena } from './arena.js?v=1102';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1102';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1474,11 +1474,11 @@ function squeak(a, delay = 0, k = 1) {
   const near = a.side === me.side ? 1 : 0.5;
   const src = actx.createBufferSource(); src.buffer = sqBufs[Math.floor(Math.random() * sqBufs.length)];
   src.playbackRate.value = rand(0.9, 1.15);
-  const g = actx.createGain(); g.gain.value = 0.11 * near * k * rand(0.8, 1.1);
+  const g = actx.createGain(); g.gain.value = 0.055 * near * k * rand(0.8, 1.1); // 使用者：再小聲一點（0.11 → 0.055，約擊球聲的 1/12）
   let node = src.connect(bq('highpass', 700, 0.7));
   if (near < 1) node = node.connect(bq('lowpass', 4500, 0.7));
   node.connect(g).connect(audioOut());
-  if (gymVerb) { const w = actx.createGain(); w.gain.value = 0.35; g.connect(w).connect(gymVerb); }
+  if (gymVerb) { const w = actx.createGain(); w.gain.value = 0.25; g.connect(w).connect(gymVerb); }
   src.start(actx.currentTime + delay);
   if (window.__sqLog) window.__sqLog.push(k); // 測試用
 }
