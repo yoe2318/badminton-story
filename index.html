@@ -78,7 +78,7 @@
   #lessonbar > span { background:var(--hud); border-radius:999px; padding:3px 10px; }
   #lessonbar #lessoncount { color:var(--hud-hl); font-size:17px; font-weight:900; }
   #lessonbar button { font:inherit; font-size:12px; padding:4px 10px; border-radius:999px; border:0; background:var(--hud); color:var(--hud-ink); }
-  #lessonmsg { left:0; right:0; top:48px; text-align:center; font-size:15px; font-weight:700; text-shadow:0 1px 3px #000a; }
+  #lessonmsg { left:0; right:0; top:80px; text-align:center; font-size:15px; font-weight:700; text-shadow:0 1px 3px #000a; }
   .drillhead { margin:14px 0 4px; font-size:14px; font-weight:700; color:var(--hl); }
   .lessonitem { display:flex; justify-content:space-between; width:100%; font:inherit; font-size:15px; text-align:left; padding:10px 12px; margin:4px 0; border-radius:8px; border:1px solid var(--line); background:var(--panel); color:var(--ink); }
   .lessonitem .ok { color:var(--good); font-size:13px; font-weight:700; }
@@ -310,7 +310,7 @@
 
     <section class="tab" data-tab="mine" hidden>
       <div class="tabtitle">我</div>
-      <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.13.0</p>
+      <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.13.1</p>
       <div class="card"><div class="avatar" id="acctavatar"></div><div class="grow"><b id="acctname">訪客</b><div class="dim" id="acctstatus">進度存在這支手機</div></div></div>
       <button class="btn main acct" id="acctbtn">用 Google 登入</button>
       <div class="glabel">設定</div>
@@ -361,7 +361,7 @@
     <div class="btnrow" style="justify-content:center"><button class="btn" id="again">再來一局</button><button class="btn" id="overhome" style="background:#555">回主選單</button></div>
   </div>
 </div>
-<script type="module" src="src/main.js?v=1130"></script>
+<script type="module" src="src/main.js?v=1131"></script>
 <script>
 (() => {
   const btn = document.getElementById('install'), help = document.getElementById('installHelp');

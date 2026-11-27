@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1130';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1130';
-import { attachGesture, chargeOf } from './gesture.js?v=1130';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1130';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1130';
-import { buildArena } from './arena.js?v=1130';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1130';
-import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1130';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1131';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1131';
+import { attachGesture, chargeOf } from './gesture.js?v=1131';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1131';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1131';
+import { buildArena } from './arena.js?v=1131';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1131';
+import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1131';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -2045,7 +2045,7 @@ function startMachine() {
   const c = JSON.parse(JSON.stringify(MC()));
   mach = { cfg: c, k: 0, ok: 0, perfect: 0, cells: [...Array(9)].map(() => ({ n: 0, ok: 0 })), rec: [], cell: -1, await: false, nextAt: simT + 1.0, recT0: 0 };
   const P = M_PRESETS.find(p => p.id === c.preset);
-  lesson = { i: -1, count: 0, L: { t: P ? P.t : '自訂', hint: '把球打回對面場內就算成功（左上「離開」看結果）', slow: false } };
+  lesson = { i: -1, count: 0, L: { t: P ? P.t : '自訂', hint: '把球打回對面場內就算成功（上方「離開」看結果）', slow: false } };
   applyMode(); // 發球機只打單打
   $('#score').style.display = 'none'; $('#lessonbar').style.display = 'flex';
   $('#banner').textContent = ''; $('#ailabel').textContent = ''; $('#lessonmsg').textContent = '';
