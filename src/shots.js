@@ -1,4 +1,4 @@
-import { NET_H, simulate, solveSpeed, solveAngle, vel } from './physics.js?v=1104';
+import { NET_H, simulate, solveSpeed, solveAngle, vel } from './physics.js?v=1110';
 
 // mode 'angle'：固定仰角求初速；mode 'speed'：固定初速（m/s）求角度
 // depth：落點離球網的距離（公尺），依滑動長短在範圍內取

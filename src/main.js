@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1104';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1104';
-import { attachGesture, chargeOf } from './gesture.js?v=1104';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1104';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1104';
-import { buildArena } from './arena.js?v=1104';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1104';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1110';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1110';
+import { attachGesture, chargeOf } from './gesture.js?v=1110';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1110';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1110';
+import { buildArena } from './arena.js?v=1110';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1110';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0, hawk: 1 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0, hawk: 1, vol: 3, squeak: 1, vib: 1 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -572,9 +572,10 @@ function hit(a, key, o) {
     const sp = styleHit(key, o);
     if (o.fancy || key === 'jumpsmash') fancyFX(o.fancy ? FANCY[o.fancy][0] : '跳殺', sp, !o.fancy); // 跳殺不放慢（球要直接衝過去）
     else popup(`${o.backhand && !spec.serve ? '反手' : o.rth ? '頭頂' : ''}${spec.name}`, `${tags}${spec.big || key === 'drive' ? `　${kmh} km/h` : ''}　+${sp}`, o.quality === 'perfect' ? '#ffd84d' : '#fff'); // 只有殺球、平抽這類攻擊球顯示球速
-  } else {
-    $('#ailabel').textContent = lesson ? `教練：${spec.name}` : `電腦：${o.backhand ? '反手' : ''}${spec.name}${spec.big || key === 'drive' ? `　${kmh} km/h` : ''}`;
   }
+  // 中間這行：誰打就顯示誰的球路和球速（使用者：要看得到自己的球速，不是只有電腦的）
+  const who = a === me ? '你' : lesson ? '教練' : a.side === me.side ? '隊友' : '電腦';
+  $('#ailabel').textContent = `${who}：${o.backhand && !spec.serve ? '反手' : o.rth ? '頭頂' : ''}${spec.name}${spec.big || key === 'drive' ? `　${kmh} km/h` : ''}`;
   if (a === me && lesson) lessonCheck(key, o, res.sim.land);
   setHint();
 }
@@ -1321,7 +1322,7 @@ function setHint() {
   lastZoneHint = '';
   if (lesson) { $('#hint').textContent = LESSONS[lesson.i].hint; return; }
   let t = '';
-  if (settings.demo) t = '自動示範中（設定裡可以關掉）';
+  if (settings.demo) t = '自動示範中（按右上暫停可以回主選單）';
   else if (phase === 'serve' && serverActor === me) t = '發球：往下滑＝短球（越長越深、斜滑換角度）｜往上滑＝高遠（快甩＝平快）';
   else if (phase === 'rally' && me.plan) t = '球進到打得到的範圍時，球旁邊的圈會亮起來';
   $('#hint').textContent = t;
@@ -1441,14 +1442,16 @@ function hitSample(key, far, kmh, quality) {
 }
 function audioOut() {
   if (!master) {
-    master = actx.createGain(); master.gain.value = 1;
+    master = actx.createGain(); master.gain.value = VOLS[settings.vol] ?? 1;
     const lim = actx.createDynamicsCompressor(); // 限幅：殺球＋回音疊在一起也不會破音
     lim.threshold.value = -6; lim.knee.value = 4; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.15;
     master.connect(lim).connect(actx.destination);
   }
   return master;
 }
+const VOLS = [0, 0.4, 0.7, 1]; // 音量：關／小／中／大
 function applySound() {
+  if (master) master.gain.value = VOLS[settings.vol] ?? 1;
   if (crowdBed) crowdBed.gain.value = settings.crowd ? 0.05 : 0;
   arena.setCrowdVisible(true);
 }
@@ -1497,7 +1500,7 @@ function applause(level) {
 // 球鞋摩擦聲（跨步、急停、跳起落地）
 // 球鞋摩擦地板的「吱」：真實錄音、小小聲（跨步、急停、跳殺落地、蹬回）；k＝這一下多用力
 function squeak(a, delay = 0, k = 1) {
-  if (!actx || !sqBufs.length || Math.random() < 0.55) return; // 不是每一步都吱（使用者：再少一點，約一半不響）
+  if (!actx || !sqBufs.length || !settings.squeak || Math.random() < 0.55) return; // 不是每一步都吱（使用者：再少一點，約一半不響）
   if (simT - (a.lastSq || -9) < 1.0) return; a.lastSq = simT; // 同一人 1 秒內最多一聲
   const near = a.side === me.side ? 1 : 0.5;
   const src = actx.createBufferSource(); src.buffer = sqBufs[Math.floor(Math.random() * sqBufs.length)];
@@ -1585,7 +1588,7 @@ window.__sfx = async (key, far = false, kmh = 300) => {
 function sfx(key, a, kmh = 0, quality) {
   const feel = feelOf(key);
   const mine = !a || a.side === me.side;
-  try { if (mine && navigator.vibrate) navigator.vibrate(feel === 'heavy' ? 35 : feel === 'solid' ? 15 : 5); } catch (e) {} // 手機震動（Android）：只有自己這邊擊球才震
+  try { if (mine && settings.vib && navigator.vibrate) navigator.vibrate(feel === 'heavy' ? 35 : feel === 'solid' ? 15 : 5); } catch (e) {} // 手機震動（Android）：只有自己這邊擊球才震
   if (!actx) return;
   if (window.__sfxLog) window.__sfxLog.push([key, kmh, quality]); // 測試用
   if (hitSample(key, !mine, kmh, quality)) return; // 有錄音就用錄音；還沒載入好才用下面的合成聲
@@ -1622,7 +1625,7 @@ attachGesture(swipeCv, {
     if (!pts) { me.charge = 0; me.touching = false; return; } // 手勢被取消
     swipePts = pts.slice(); swipeFade = 1; me.charge = chargeOf(pts, swipeCv.clientHeight);
   },
-  onEnd: g => { me.charge = 0; me.touching = false; if (drill) { stopDrill(); return; } if (!settings.demo && phase !== 'over') humanSwing(g); swipeFade = 1; },
+  onEnd: g => { me.charge = 0; me.touching = false; if (drill) { openHome('practice'); return; } if (!settings.demo && phase !== 'over') humanSwing(g); swipeFade = 1; },
 });
 function drawSwipe(rdt) {
   const w = swipeCv.clientWidth, h = swipeCv.clientHeight;
@@ -1643,35 +1646,78 @@ function drawSwipe(rdt) {
   }
 }
 
-// 設定面板
+// 設定面板（B 版介面：主選單底部分頁＋比賽中暫停；設定分成操作／畫面／聲音三類）
+const SET_GROUPS = `
+<details><summary><span>操作</span><span class="val v-op"></span></summary>
+  <div class="row"><span>擊球提示圈<small>球進到打得到的範圍時亮圈</small></span><div class="seg" data-k="ring"><button data-v="0">關</button><button data-v="1">開</button></div></div>
+  <div class="row"><span>擊球慢動作輔助<small>球快到時稍微放慢，比較好抓時機</small></span><div class="seg" data-k="assist"><button data-v="0">關</button><button data-v="1">開</button></div></div>
+  <div class="row"><span>慢動作<small>整場都放慢一半，練習用</small></span><div class="seg" data-k="slow"><button data-v="0">關</button><button data-v="1">開</button></div></div>
+</details>
+<details><summary><span>畫面</span><span class="val v-view"></span></summary>
+  <div class="row"><span>視角</span><div class="seg" data-k="cam"><button data-v="0">標準</button><button data-v="1">近距離</button><button data-v="2">肩後</button><button data-v="3">球員</button></div></div>
+  <div class="row"><span>鷹眼<small>壓線球重播落點；挑戰制＝你決定要不要挑戰</small></span><div class="seg" data-k="hawk"><button data-v="0">關</button><button data-v="1">自動重播</button><button data-v="2">挑戰制</button></div></div>
+</details>
+<details><summary><span>聲音</span><span class="val v-snd"></span></summary>
+  <div class="row"><span>音量</span><div class="seg" data-k="vol"><button data-v="0">關</button><button data-v="1">小</button><button data-v="2">中</button><button data-v="3">大</button></div></div>
+  <div class="row"><span>球鞋摩擦聲</span><div class="seg" data-k="squeak"><button data-v="0">關</button><button data-v="1">開</button></div></div>
+  <div class="row"><span>震動<small>自己擊球時手機震一下（Android）</small></span><div class="seg" data-k="vib"><button data-v="0">關</button><button data-v="1">開</button></div></div>
+</details>`;
+document.querySelectorAll('.setgroups').forEach(el => { el.innerHTML = SET_GROUPS; });
+const segText = k => { const b = document.querySelector(`.seg[data-k="${k}"] button.on`); return b ? b.textContent : ''; };
 function syncSettingsUI() {
   document.querySelectorAll('.seg').forEach(seg => {
     const k = seg.dataset.k;
     seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(settings[k]) === b.dataset.v));
   });
+  // 收起來時，右邊顯示目前的值（先看再改）
+  const rule = `${segText('mode')}・${settings.target} 分・${segText('games')}${settings.stamina ? '・體力' : ''}`;
+  const opp = `${segText('opp')}・${segText('diff')}・${segText('pers')}`;
+  const put = (sel, t) => document.querySelectorAll(sel).forEach(e => { e.textContent = t; });
+  put('#v-rule', rule); put('#v-me', segText('me')); put('#v-opp', opp);
+  put('#lastsum', `${rule}・對 ${opp}`);
+  put('.v-op', `提示圈${settings.ring ? '開' : '關'}・輔助${settings.assist ? '開' : '關'}`);
+  put('.v-view', `${segText('cam')}・鷹眼${segText('hawk')}`);
+  put('.v-snd', `音量${segText('vol')}`);
 }
-document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
+document.addEventListener('click', e => {
+  const b = e.target.closest('.seg button'); if (!b) return;
+  const seg = b.closest('.seg');
   const k = seg.dataset.k, v = Number(b.dataset.v), changedTarget = k === 'target' && v !== settings.target;
   settings[k] = v; saveSettings(); syncSettingsUI(); updateScore(); setHint();
   if (k === 'pers') { pickPers(); $('#ailabel').textContent = persLabel(); }
   if (k === 'opp') { loadOpponent(); if (dbl()) loadDoublesRigs(); }
   if (k === 'me') { loadMe(); if (dbl()) loadDoublesRigs(); }
-  if (changedTarget || k === 'games' || k === 'mode') restart();
+  if ((changedTarget || k === 'games' || k === 'mode') && homeEl.classList.contains('hidden')) restart(); // 主選單裡改的話，按「開始比賽」才重開
   if (k === 'stamina') { for (const a of actors) a.stam = 100; staminaUI(); }
-  if (k === 'sound' || k === 'crowd') applySound();
+  if (k === 'sound' || k === 'crowd' || k === 'vol') { ensureAudio(); applySound(); }
   if (k === 'call' && v) { ensureAudio(); say('報分開啟'); }
-}));
+});
 function restart() { stopDrill(); chFail[0] = chFail[1] = 0; if (call) { call = null; chBtn.style.display = 'none'; } serverActor = me; rightCourt[1] = me; rightCourt[-1] = cpu; games[0] = games[1] = 0; gameLog.length = 0; midSwitched = false; for (const a of actors) a.stam = 100; pickPers(); endLesson(); applyMode(); Object.assign(style, { total: 0, combo: 0, best: 0 }); updateStyle(); scores[0] = scores[1] = 0; server = 0; $('#over').classList.add('hidden'); setupServe(); }
-$('#gear').onclick = () => { syncSettingsUI(); $('#settings').classList.remove('hidden'); };
-$('#close').onclick = () => $('#settings').classList.add('hidden');
-$('#restart').onclick = () => { restart(); $('#settings').classList.add('hidden'); };
-$('#showhelp').onclick = () => { $('#settings').classList.add('hidden'); $('#help').classList.remove('hidden'); };
-$('#start').onclick = () => {
-  $('#help').classList.add('hidden'); restart();
-  ensureAudio();
-};
+const homeEl = $('#home'), pauseEl = $('#pause');
+function openHome(tab = 'match') {
+  hideOverlays(); stopDrill(); endLesson();
+  if (settings.demo) { settings.demo = 0; saveSettings(); updateScore(); setHint(); }
+  buildPracticeLists(); syncSettingsUI();
+  $('#firsttip').style.display = doneSet.size ? 'none' : '';
+  showTab(tab); homeEl.classList.remove('hidden');
+}
+function showTab(tab) {
+  homeEl.querySelectorAll('.tab').forEach(t => { t.hidden = t.dataset.tab !== tab; });
+  homeEl.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+}
+homeEl.addEventListener('click', () => ensureAudio()); // 第一次點畫面時才能開聲音
+$('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
+$('#play').onclick = () => { settings.demo = 0; saveSettings(); hideOverlays(); restart(); ensureAudio(); };
+$('#firsttip').onclick = () => showTab('practice');
+$('#demostart').onclick = () => { settings.demo = 1; saveSettings(); hideOverlays(); restart(); updateScore(); setHint(); };
+$('#showhelp').onclick = () => $('#help').classList.remove('hidden');
+$('#helpclose').onclick = () => $('#help').classList.add('hidden');
+$('#pausebtn').onclick = () => { syncSettingsUI(); pauseEl.querySelectorAll('details').forEach(d => { d.open = false; }); pauseEl.classList.remove('hidden'); };
+$('#resume').onclick = () => pauseEl.classList.add('hidden');
+$('#restart').onclick = () => { pauseEl.classList.add('hidden'); if (lesson) startLesson(lesson.i); else restart(); };
+$('#tohome').onclick = () => openHome(lesson ? 'practice' : 'match');
 $('#again').onclick = restart;
+$('#overhome').onclick = () => openHome('match');
 
 // ---------------- 新手訓練 ----------------
 const LESSONS = [
@@ -1870,8 +1916,7 @@ function drillTick() {
 }
 window.__drill = i => startDrill(i); window.__drillStop = () => stopDrill();
 
-function openLessonMenu() {
-  hideOverlays();
+function buildPracticeLists() {
   const box = $('#lessonlist'); box.innerHTML = '';
   LESSONS.forEach((L, i) => {
     const b = document.createElement('button');
@@ -1880,25 +1925,22 @@ function openLessonMenu() {
     b.onclick = () => openLessonIntro(i);
     box.appendChild(b);
   });
-  const h = document.createElement('div'); h.className = 'drillhead'; h.textContent = '步法示範（看角色做 14 種兩點連貫步伐）'; box.appendChild(h);
+  const dbox = $('#drilllist'); dbox.innerHTML = '';
   DRILLS.forEach((D, i) => {
     const b = document.createElement('button');
     b.className = 'lessonitem';
-    b.innerHTML = `<span>步法 ${i + 1}. ${D.t}</span><span class="ok"></span>`;
+    b.innerHTML = `<span>${i + 1}. ${D.t}</span><span class="ok"></span>`;
     b.onclick = () => startDrill(i);
-    box.appendChild(b);
+    dbox.appendChild(b);
   });
-  $('#lessons').classList.remove('hidden');
 }
-$('#tolessons').onclick = () => { ensureAudio(); openLessonMenu(); };
-$('#menulessons').onclick = openLessonMenu;
+const openLessonMenu = () => openHome('practice');
 $('#introgo').onclick = () => startLesson(Number($('#intro').dataset.i));
 $('#introback').onclick = openLessonMenu;
 $('#donenext').onclick = () => { const i = lesson.i + 1; endLesson(); openLessonIntro(i); };
 $('#doneretry').onclick = () => { const i = lesson.i; startLesson(i); };
 $('#donemenu').onclick = () => { endLesson(); openLessonMenu(); };
-$('#lessonquit').onclick = () => { endLesson(); restart(); };
-$('#lessonsclose').onclick = () => { hideOverlays(); };
+$('#lessonquit').onclick = () => { endLesson(); openLessonMenu(); };
 
 // ---------------- 動畫 ----------------
 function swingAnim(a) {
@@ -2015,6 +2057,7 @@ function loop(now) {
   const realDt = rdt;
   if (hitStop > 0) { hitStop -= rdt; rdt = 0; }
   if (window.__freeze) rdt = 0; // 測試用：暫停
+  if (!homeEl.classList.contains('hidden') || !pauseEl.classList.contains('hidden')) rdt = 0; // 主選單、暫停中
   const rr = settings.assist && !settings.demo ? reachInfo() : null;
   // 慢動作輔助：球進到打得到的範圍才慢慢變慢；很快的球（殺球、平抽）不放慢
   const fastBall = Math.hypot(shuttle.v.x, shuttle.v.y, shuttle.v.z) > 14;
@@ -2036,6 +2079,7 @@ applyMode();
 applySound();
 updateScore();
 setupServe();
+openHome('match');
 requestAnimationFrame(loop);
 window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來的球（玩家照正常流程判斷）
   Object.assign(shuttle, { p: { ...p }, v: { ...v }, held: false, lastHitter: cpu, tumble: false, serve: false, netFault: false });
