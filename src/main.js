@@ -1,19 +1,19 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1110';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1110';
-import { attachGesture, chargeOf } from './gesture.js?v=1110';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1110';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1110';
-import { buildArena } from './arena.js?v=1110';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1110';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1111';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1111';
+import { attachGesture, chargeOf } from './gesture.js?v=1111';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1111';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1111';
+import { buildArena } from './arena.js?v=1111';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1111';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------------- 設定 ----------------
-const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0, hawk: 1, vol: 3, squeak: 1, vib: 1 };
+const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0, hawk: 1, vol: 3, squeak: 1, vib: 1, oSpd: 0, oRea: 0, oSta: 0, oAcc: 0, oAtk: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
 const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
@@ -23,9 +23,36 @@ const DIFF = [
   { speed: 4.3, react: 0.18, perfect: 0.7, poor: 0.04, readOut: 0.97, tactic: 0.85, err: 0.5, backhand: 0.45 },
   { speed: 4.7, react: 0.13, perfect: 0.85, poor: 0, readOut: 1, tactic: 1, err: 0.35, backhand: 0.55 },
 ];
-const dOf = a => DIFF[a.human ? 3 : settings.diff];
+// 強度 1～10 級（§13.12）：3＝簡單、5＝普通、7＝困難、9＝高手（上面四列），1～2 比簡單更弱、10 比高手更強（往外延伸）
+// 我方（雙打隊友、自動示範時的你）和對方分開設；雙打的第二個對手可以另外設；對手還能分項細調（每項 ±2 級）
+const DIFF_KEYS = ['speed', 'react', 'perfect', 'poor', 'readOut', 'tactic', 'err', 'backhand'];
+const ADJ_OF = { speed: 'oSpd', react: 'oRea', readOut: 'oRea', perfect: 'oSta', poor: 'oSta', err: 'oAcc', backhand: 'oAcc', tactic: 'oAcc' };
+const DIFF_LIM = { speed: [2.8, 5.0], react: [0.1, 0.46], perfect: [0, 0.95], poor: [0, 0.6], readOut: [0.1, 1], tactic: [0, 1], err: [0.28, 1.35], backhand: [0, 0.65] };
+function diffAt(k, t) { // t：0＝簡單 … 3＝高手，超出範圍就沿著兩端的斜率延伸
+  const i = clamp(Math.floor(t), 0, 2), u = t - i, v = DIFF[i][k] + (DIFF[i + 1][k] - DIFF[i][k]) * u;
+  return clamp(v, DIFF_LIM[k][0], DIFF_LIM[k][1]);
+}
+const lvT = lv => (lv - 3) / 2;
+const diffCache = new Map();
+function statsFor(who) {
+  const lv = who === 'mate' ? settings.mateLv : who === 'opp2' && dbl() ? settings.opp2Lv : settings.oppLv;
+  const adj = who === 'mate' ? null : ['oSpd', 'oRea', 'oSta', 'oAcc', 'oAtk'].map(k => settings[k] || 0);
+  const key = lv + '|' + (adj ? adj.join(',') : '');
+  let D = diffCache.get(key);
+  if (!D) {
+    D = {};
+    for (const k of DIFF_KEYS) D[k] = diffAt(k, lvT(lv) + (adj ? (settings[ADJ_OF[k]] || 0) : 0));
+    D.atk = adj ? settings.oAtk || 0 : 0; // 進攻：+1 多殺、−1 少殺
+    diffCache.set(key, D);
+  }
+  return D;
+}
+const dOf = a => statsFor(a.side === me.side ? 'mate' : a === cpu2 ? 'opp2' : 'opp');
+const LV_NAME = lv => lv <= 2 ? '入門' : lv <= 4 ? '簡單' : lv <= 6 ? '普通' : lv <= 8 ? '困難' : '高手';
 // 舊版教學會把難度鎖成「簡單」，升級時改回普通
 if (settings.v !== 2) { if (settings.diff === 0) settings.diff = 1; settings.v = 2; saveSettings(); }
+// 舊的四級難度 → 1～10 級（隊友以前跟對手同一個難度）
+if (settings.oppLv === undefined) { const lv = [3, 5, 7, 9][settings.diff ?? 1] ?? 5; Object.assign(settings, { oppLv: lv, opp2Lv: lv, mateLv: lv }); saveSettings(); }
 const HUMAN = { speed: 4.2, react: 0.18 }; // 你的球員：對手擊球後先墊步 0.18 秒才起動
 const ACC = 13; // 加速度 m/s²
 const DIFF_ = [
@@ -685,7 +712,7 @@ function aiPreChoose(a) {
   const D = dOf(a), c = a.plan, pos = a.stand || a.pos;
   const saved = { y: shuttle.p.y, x: shuttle.p.x, z: shuttle.p.z }, savedPos = { ...a.pos };
   shuttle.p.y = c.y; shuttle.p.x = c.x; shuttle.p.z = c.z; a.pos.x = pos.x; a.pos.z = pos.z; // 用預測的擊球點和站位來想
-  try { a.preKey = !lesson && Math.random() < D.tactic ? personalize(a, aiTactic(a, D)).key : aiChoose(a); }
+  try { a.preKey = !lesson && Math.random() < D.tactic ? personalize(a, aiTactic(a, D)).key : aiChoose(a); if (!lesson && D.atk) a.preKey = attackBias(a, { key: a.preKey }, D.atk).key; }
   finally { Object.assign(shuttle.p, saved); a.pos.x = savedPos.x; a.pos.z = savedPos.z; }
   if (Math.abs(c.z) < 0.6 && c.y < 0.9 && (a.preKey === 'lift' || a.preKey === 'push')) a.preKey = 'net'; // 貼網低球：放網
   a.jumpH = a.preKey === 'jumpsmash' ? 0.6 : Math.max(ATTACK_KEYS.has(a.preKey) ? clamp((c.y - 2.6) * 0.8, 0, 0.4) : 0, rearScissor(c));
@@ -694,6 +721,13 @@ function aiPreChoose(a) {
 }
 const SHORT_KEYS = new Set(['fastdrop', 'slowdrop', 'slicedrop', 'block', 'net', 'spin', 'cross', 'stick', 'kill']);
 
+// 進攻細調：+1 有機會就多殺（高遠、吊球改殺球），−1 少殺（殺球改高遠）
+function attackBias(a, t, atk) {
+  const y = shuttle.p.y, myD = Math.abs(a.pos.z), r = Math.random();
+  if (atk > 0 && ['clear', 'aclear', 'fastdrop', 'slowdrop', 'slicedrop'].includes(t.key) && y >= 2.2 && myD < 5.6 && r < 0.35) return { ...t, key: 'smash', depthFrac: rand(0.3, 1) };
+  if (atk < 0 && ['smash', 'jumpsmash', 'slicesmash'].includes(t.key) && r < 0.45) return { ...t, key: 'clear', depthFrac: rand(0.65, 1) };
+  return t;
+}
 function aiTryHit(a) {
   a.plan = null;
   if (a.letGo || shuttle.lastHitter === a || (shuttle.lastHitter && shuttle.lastHitter.side === a.side)) return;
@@ -715,6 +749,7 @@ function aiTryHit(a) {
     t = { key: pk, aimX: D.tactic > 0 ? open * rand(0.45, 1) : aimX, depthFrac: SHORT_KEYS.has(pk) ? rand(0, 0.45) : rand(0.55, 1) };
   }
   if (!lesson && !pk) t = personalize(a, t);
+  if (!lesson && D.atk) t = attackBias(a, t, D.atk);
   if (tightLow && (t.key === 'lift' || t.key === 'push')) t = { ...t, key: Math.random() < 0.3 ? 'spin' : 'net', depthFrac: rand(0, 0.4) };
   const hold = t.hold ?? (a.pers === 5 && Math.random() < 0.3);
   hit(a, t.key, { aimX: t.aimX, depthFrac: t.depthFrac, power: rand(0.6 + D.tactic * 0.25, 1), quality, backhand: stroke[0] === 'b', rth: stroke === 'rth', errK: D.err * (t.errMul || (a.pers === 3 ? 0.75 : 1)), safe: D.tactic ? 0.6 : 0, hold, curve: t.curve });
@@ -1663,6 +1698,13 @@ const SET_GROUPS = `
   <div class="row"><span>震動<small>自己擊球時手機震一下（Android）</small></span><div class="seg" data-k="vib"><button data-v="0">關</button><button data-v="1">開</button></div></div>
 </details>`;
 document.querySelectorAll('.setgroups').forEach(el => { el.innerHTML = SET_GROUPS; });
+const lvText = k => `${settings[k]}・${LV_NAME(settings[k])}`;
+const ADJ_ROWS = [['oSpd', '跑速'], ['oRea', '反應'], ['oSta', '穩定', '完美擊球多、勉強擊球少'], ['oAcc', '落點', '準度、會不會打你的空檔和反手'], ['oAtk', '進攻', '多殺球或多拉高遠']];
+document.querySelectorAll('.adjrows').forEach(el => { el.innerHTML = ADJ_ROWS.map(([k, t, d]) => `<div class="row"><span>${t}${d ? `<small>${d}</small>` : ''}</span><div class="seg" data-k="${k}"><button data-v="-1">弱</button><button data-v="0">標準</button><button data-v="1">強</button></div></div>`).join(''); });
+document.addEventListener('input', e => {
+  const r = e.target.closest('input.lv'); if (!r) return;
+  settings[r.dataset.k] = Number(r.value); saveSettings(); syncSettingsUI();
+});
 const segText = k => { const b = document.querySelector(`.seg[data-k="${k}"] button.on`); return b ? b.textContent : ''; };
 function syncSettingsUI() {
   document.querySelectorAll('.seg').forEach(seg => {
@@ -1671,7 +1713,12 @@ function syncSettingsUI() {
   });
   // 收起來時，右邊顯示目前的值（先看再改）
   const rule = `${segText('mode')}・${settings.target} 分・${segText('games')}${settings.stamina ? '・體力' : ''}`;
-  const opp = `${segText('opp')}・${segText('diff')}・${segText('pers')}`;
+  document.querySelectorAll('input.lv').forEach(r => { r.value = settings[r.dataset.k]; const o = r.parentElement.querySelector('output'); if (o) o.textContent = lvText(r.dataset.k); });
+  document.querySelectorAll('.dblonly').forEach(e => { e.style.display = dbl() ? '' : 'none'; });
+  const adjN = ['oSpd', 'oRea', 'oSta', 'oAcc', 'oAtk'].filter(k => settings[k]).length;
+  const opp = `${segText('opp')}・${settings.oppLv} 級${dbl() && settings.opp2Lv !== settings.oppLv ? `／${settings.opp2Lv} 級` : ''}・${segText('pers')}${adjN ? `・細調 ${adjN} 項` : ''}`;
+  document.querySelectorAll('#v-adj').forEach(e => { e.textContent = adjN ? `改了 ${adjN} 項` : '全部標準'; });
+  document.querySelectorAll('#v-mate').forEach(e => { e.textContent = lvText('mateLv'); });
   const put = (sel, t) => document.querySelectorAll(sel).forEach(e => { e.textContent = t; });
   put('#v-rule', rule); put('#v-me', segText('me')); put('#v-opp', opp);
   put('#lastsum', `${rule}・對 ${opp}`);
