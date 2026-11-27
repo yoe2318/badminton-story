@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1120';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1120';
-import { attachGesture, chargeOf } from './gesture.js?v=1120';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1120';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1120';
-import { buildArena } from './arena.js?v=1120';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1120';
-import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1120';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1121';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1121';
+import { attachGesture, chargeOf } from './gesture.js?v=1121';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1121';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1121';
+import { buildArena } from './arena.js?v=1121';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1121';
+import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1121';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -600,7 +600,7 @@ function hit(a, key, o) {
     const tags = [o.quality ? QUAL[o.quality] : '', o.noPull ? '沒拉拍' : '', Math.abs(o.curve || 0) > CURVE_MIN ? '弧線' : '', o.hold ? '停頓' : ''].filter(Boolean).join('・');
     const sp = styleHit(key, o);
     if (o.fancy || key === 'jumpsmash') fancyFX(o.fancy ? FANCY[o.fancy][0] : '跳殺', sp, !o.fancy); // 跳殺不放慢（球要直接衝過去）
-    else popup(`${o.backhand && !spec.serve ? '反手' : o.rth ? '頭頂' : ''}${spec.name}`, `${tags}${spec.big || key === 'drive' ? `　${kmh} km/h` : ''}　+${sp}`, o.quality === 'perfect' ? '#ffd84d' : '#fff'); // 只有殺球、平抽這類攻擊球顯示球速
+    else popup(`${o.backhand && !spec.serve ? '反手' : o.rth ? '頭頂' : ''}${spec.name}`, `${tags}${spec.big || key === 'drive' ? `　${kmh} km/h` : ''}　+${sp}`, o.quality === 'perfect' ? '#ff8a7a' : '#fff'); // 只有殺球、平抽這類攻擊球顯示球速
   }
   // 中間這行：誰打就顯示誰的球路和球速（使用者：要看得到自己的球速，不是只有電腦的）
   const who = a === me ? '你' : lesson ? '教練' : a.side === me.side ? '隊友' : '電腦';
@@ -868,7 +868,7 @@ let call = null;
 const chFail = { 0: 0, 1: 0 };
 const chBtn = document.createElement('button');
 chBtn.id = 'challenge';
-chBtn.style.cssText = 'position:fixed;left:50%;bottom:16%;transform:translateX(-50%);z-index:30;padding:14px 30px;border:0;border-radius:999px;background:#ffd84d;color:#1b1b1b;font-size:20px;font-weight:900;box-shadow:0 4px 14px #0008;display:none';
+chBtn.style.cssText = 'position:fixed;left:50%;bottom:16%;transform:translateX(-50%);z-index:30;padding:14px 30px;border:0;border-radius:999px;background:#ff6f61;color:#fff;font-size:20px;font-weight:900;box-shadow:0 4px 14px #0008;display:none';
 document.body.appendChild(chBtn);
 chBtn.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); if (call && !call.challenged) challenge(0); });
 function lineJudge(lc, h, winner, reason) {
@@ -888,7 +888,7 @@ function lineJudge(lc, h, winner, reason) {
 }
 function challenge(li) {
   call.challenged = true; chBtn.style.display = 'none';
-  $('#banner').innerHTML = `${li === 0 ? (dbl() ? '你們' : '你') : '電腦'}提出挑戰！`; $('#banner').style.color = '#ffd84d';
+  $('#banner').innerHTML = `${li === 0 ? (dbl() ? '你們' : '你') : '電腦'}提出挑戰！`; $('#banner').style.color = '#ff8a7a';
   phaseT = simT + 99; // 等鷹眼看完
   startHawk(call.lc, call.truthIn, () => finishCall(), call.snap);
 }
@@ -1059,7 +1059,7 @@ function point(w, reason) {
   const T = settings.target, cap = T === 21 ? 30 : T + 9;
   const gameWon = (scores[i] >= T && scores[i] - scores[1 - i] >= 2) || scores[i] >= cap;
   $('#banner').textContent = `${i === 0 ? (dbl() ? '你們得分' : '你得分') : '電腦得分'}・${reason}`;
-  $('#banner').style.color = i === 0 ? '#ffd84d' : '#9fd0ff';
+  $('#banner').style.color = i === 0 ? '#ff8a7a' : '#9fd0ff';
   const need = settings.games === 3 ? 2 : 1;
   if (gameWon) { games[i]++; gameLog.push(`${scores[0]}:${scores[1]}`); }
   const won = gameWon && games[i] >= need;
@@ -1678,7 +1678,7 @@ function drawSwipe(rdt) {
   if (me.charge > 0) { // 蓄力條
     const bh = h * 0.3, bx = w - 22, by = h * 0.62;
     sctx.fillStyle = 'rgba(0,0,0,0.45)'; sctx.fillRect(bx, by - bh, 10, bh);
-    sctx.fillStyle = me.charge >= 1 ? '#ffd84d' : '#e0703f'; sctx.fillRect(bx, by - bh * me.charge, 10, bh * me.charge);
+    sctx.fillStyle = me.charge >= 1 ? '#ff6f61' : '#2f8fe8'; sctx.fillRect(bx, by - bh * me.charge, 10, bh * me.charge);
     sctx.fillStyle = '#fff'; sctx.font = '700 12px "Noto Sans TC",sans-serif'; sctx.fillText('蹲低', bx - 8, by + 16);
   }
 }
@@ -1890,7 +1890,7 @@ function lessonCheck(key, o, land) {
     $('#lessonmsg').style.color = '#7ee2a8';
   } else {
     $('#lessonmsg').textContent = `這球打成「${SHOTS[key].name}」，再試一次`;
-    $('#lessonmsg').style.color = '#ffcf9e';
+    $('#lessonmsg').style.color = '#ffc2b8';
   }
   lessonBar();
 }
