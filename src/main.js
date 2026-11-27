@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1131';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1131';
-import { attachGesture, chargeOf } from './gesture.js?v=1131';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1131';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1131';
-import { buildArena } from './arena.js?v=1131';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1131';
-import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1131';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1140';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1140';
+import { attachGesture, chargeOf } from './gesture.js?v=1140';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1140';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1140';
+import { buildArena } from './arena.js?v=1140';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1140';
+import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1140';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -253,7 +253,8 @@ const kindOf = y => (y >= 2.0 ? 'over' : y >= 1.0 ? 'side' : 'under');
 const OPP_MODELS = ['models/cc0_D.vrm', 'models/cc0_E.vrm', 'models/cc0_F.vrm', 'models/cc0_G.vrm'];
 let playerURL = 'models/player.vrm';
 // 角色編號：0＝自己捏的貓耳浴衣、1～4＝CC0 角色（渋、ビビ、ヴィータ、ヴィクトリア）
-const charURL = id => (id > 0 ? OPP_MODELS[id - 1] : playerURL);
+let SPORT_URL = 'models/player_sport_small.vrm', sportTried = false; // 5＝貓耳角色換運動服（Blender 做的，2026-11-27 試作）
+const charURL = id => (id === 5 ? SPORT_URL : id > 0 ? OPP_MODELS[id - 1] : playerURL);
 async function putRig(a, url) {
   const token = a.rigToken = (a.rigToken || 0) + 1; // 連續換角色時，只用最後一次選的
   const vrm = await loadVRM(url);
