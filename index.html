@@ -135,6 +135,22 @@
   .list details.sub { border-top:1px solid var(--line); }
   .list details.sub summary { padding:10px 14px; font-weight:700; font-size:14px; }
   .list details.sub .row { padding-left:24px; }
+  .back { display:inline-flex; align-items:center; gap:2px; font:inherit; font-size:14px; font-weight:700; color:var(--accent); background:none; border:0; padding:0 0 6px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { font:inherit; font-size:14px; padding:7px 13px; border-radius:999px; border:1px solid #1b243033; background:var(--panel); color:var(--ink); }
+  .chip.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+  .mseg { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+  .mseg button { font:inherit; font-size:13px; padding:5px 10px; border-radius:8px; border:1px solid #1b243033; background:var(--panel); color:var(--ink); }
+  .mseg button.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+  .grid9 { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; padding:8px; border-radius:12px; background:#3a8f74; border-top:4px solid #ffffff; max-width:260px; margin:0 auto; }
+  .grid9 .cell { aspect-ratio:1.25; border-radius:6px; border:2px solid #ffffff66; background:#ffffff1a; font:inherit; color:#fff; }
+  .grid9 .cell.on { background:var(--accent); border-color:#fff; }
+  .grid9.heat > div { aspect-ratio:1.25; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:17px; text-shadow:0 1px 2px #0006; }
+  .grid9.heat > div small { font-size:11px; font-weight:700; opacity:.9; }
+  .stats { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:12px; }
+  .stats > div { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px; }
+  .stats b { display:block; font-size:24px; font-weight:900; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .stats span { font-size:12px; color:var(--dim); }
 </style>
 <script type="importmap">
 { "imports": {
@@ -250,12 +266,29 @@
       <div class="tabtitle">練習</div>
       <div class="list">
         <button class="item" id="demostart"><span>看電腦自動示範<small>兩邊都由電腦打，看動作和球路</small></span><span class="val">›</span></button>
-        <div class="item off"><span>發球機<small>選球路、落點，一直練同一種球</small></span><span class="val">即將推出</span></div>
+        <button class="item" id="mopen"><span>發球機<small>選球路、落點，一直練同一種球</small></span><span class="val">›</span></button>
       </div>
       <div class="glabel">新手訓練</div>
       <div class="list" id="lessonlist"></div>
       <div class="glabel">步法示範<small>看角色做 14 種兩點連貫步伐，點一下畫面結束</small></div>
       <div class="list" id="drilllist"></div>
+    </section>
+
+    <section class="tab" data-tab="machine" id="machine-tab" hidden>
+      <button class="back" id="mback"><svg class="i" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>練習</button>
+      <div class="tabtitle">發球機</div>
+      <div class="glabel">預設菜單</div>
+      <div class="chips" id="mpresets"></div>
+      <div class="glabel">球路<small>機器打過來的球，可以多選</small></div>
+      <div class="chips" id="mshots"></div>
+      <div class="glabel">落點<small>點格子選要練的位置，上面是網前；都不選＝全場隨機。<span id="mcellnote"></span></small></div>
+      <div class="grid9" id="mcells"></div>
+      <div class="list" style="margin-top:14px">
+        <div class="row" style="padding:10px 14px"><span>間隔<small>你擊球後多久打下一球</small></span><div class="mseg" data-mk="iv"><button data-v="1">1 秒</button><button data-v="1.5">1.5</button><button data-v="2">2</button><button data-v="3">3</button></div></div>
+        <div class="row" style="padding:10px 14px;border-top:1px solid var(--line)"><span>球速</span><div class="mseg" data-mk="sp"><button data-v="0">慢</button><button data-v="1">中</button><button data-v="2">快</button></div></div>
+        <div class="row" style="padding:10px 14px;border-top:1px solid var(--line);border-bottom:0"><span>數量</span><div class="mseg" data-mk="n"><button data-v="20">20</button><button data-v="50">50</button><button data-v="0">不限</button></div></div>
+      </div>
+      <button class="btn main" id="mstart" style="margin-top:16px"><svg class="i" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>開始</button>
     </section>
 
     <section class="tab" data-tab="events" hidden>
@@ -277,7 +310,7 @@
 
     <section class="tab" data-tab="mine" hidden>
       <div class="tabtitle">我</div>
-      <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.12.1</p>
+      <p class="ver" style="opacity:.6;font-size:12px;margin:-4px 0 8px">羽球物語 v1.13.0</p>
       <div class="card"><div class="avatar" id="acctavatar"></div><div class="grow"><b id="acctname">訪客</b><div class="dim" id="acctstatus">進度存在這支手機</div></div></div>
       <button class="btn main acct" id="acctbtn">用 Google 登入</button>
       <div class="glabel">設定</div>
@@ -293,6 +326,16 @@
       <button data-tab="shop"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.6L22 7H6"/></svg>商店</button>
       <button data-tab="mine"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>我</button>
     </nav>
+  </div>
+
+  <!-- 發球機結束 -->
+  <div id="mstats" class="overlay hidden">
+    <div class="tabtitle">練習結果</div>
+    <div class="dim" id="msub"></div>
+    <div class="stats" id="mtiles"></div>
+    <div class="glabel">落點熱區<small>每格是你接這一格的成功率，上面是網前；越紅越需要加強</small></div>
+    <div class="grid9 heat" id="mheat"></div>
+    <div class="btnrow2" style="margin-top:6px"><button class="btn sub" id="mretry">再練一次</button><button class="btn sub" id="mhome">回練習</button></div>
   </div>
 
   <!-- 比賽中暫停 -->
@@ -318,7 +361,7 @@
     <div class="btnrow" style="justify-content:center"><button class="btn" id="again">再來一局</button><button class="btn" id="overhome" style="background:#555">回主選單</button></div>
   </div>
 </div>
-<script type="module" src="src/main.js?v=1121"></script>
+<script type="module" src="src/main.js?v=1130"></script>
 <script>
 (() => {
   const btn = document.getElementById('install'), help = document.getElementById('installHelp');

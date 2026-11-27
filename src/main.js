@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1121';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1121';
-import { attachGesture, chargeOf } from './gesture.js?v=1121';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1121';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1121';
-import { buildArena } from './arena.js?v=1121';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1121';
-import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1121';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1130';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1130';
+import { attachGesture, chargeOf } from './gesture.js?v=1130';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1130';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1130';
+import { buildArena } from './arena.js?v=1130';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1130';
+import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1130';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -605,7 +605,7 @@ function hit(a, key, o) {
   // 中間這行：誰打就顯示誰的球路和球速（使用者：要看得到自己的球速，不是只有電腦的）
   const who = a === me ? '你' : lesson ? '教練' : a.side === me.side ? '隊友' : '電腦';
   $('#ailabel').textContent = `${who}：${o.backhand && !spec.serve ? '反手' : o.rth ? '頭頂' : ''}${spec.name}${spec.big || key === 'drive' ? `　${kmh} km/h` : ''}`;
-  if (a === me && lesson) lessonCheck(key, o, res.sim.land);
+  if (a === me && lesson) { if (lesson.L) machineHit(o, res.sim.land); else lessonCheck(key, o, res.sim.land); }
   setHint();
 }
 
@@ -844,7 +844,7 @@ function resolveLanding() {
   const s = shuttle, h = s.lastHitter;
   if (!h) return;
 
-  if (lesson) { lessonLanded(); return; }
+  if (lesson) { if (lesson.L) machineLanded(); else lessonLanded(); return; }
   const landSide = s.p.z >= 0 ? 1 : -1;
   let winner, reason;
   if (s.netFault) { winner = other(h); reason = '掛網'; }
@@ -1281,6 +1281,7 @@ function updateAnim(a) {
 
 function fixed() {
   simT += DT;
+  if (lesson && lesson.L && mach) machineTick();
   if (phase === 'feed') { floorTick(); moveActors(); if (simT >= phaseT) doFeed(); return; }
   if (phase === 'lessonwait') { floorTick(); return; }
   if (phase === 'drill') { moveActors(); if (drill) drillTick(); return; }
@@ -1357,7 +1358,7 @@ function popup(main, sub, color) {
 }
 function setHint() {
   lastZoneHint = '';
-  if (lesson) { $('#hint').textContent = LESSONS[lesson.i].hint; return; }
+  if (lesson) { $('#hint').textContent = curL().hint; return; }
   let t = '';
   if (settings.demo) t = '自動示範中（按右上暫停可以回主選單）';
   else if (phase === 'serve' && serverActor === me) t = '發球：往下滑＝短球（越長越深、斜滑換角度）｜往上滑＝高遠（快甩＝平快）';
@@ -1752,7 +1753,8 @@ function openHome(tab = 'match') {
 }
 function showTab(tab) {
   homeEl.querySelectorAll('.tab').forEach(t => { t.hidden = t.dataset.tab !== tab; });
-  homeEl.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  homeEl.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === (tab === 'machine' ? 'practice' : tab)));
+  if (tab === 'machine') buildMachineUI();
 }
 homeEl.addEventListener('click', () => ensureAudio()); // 第一次點畫面時才能開聲音
 $('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
@@ -1763,7 +1765,7 @@ $('#showhelp').onclick = () => $('#help').classList.remove('hidden');
 $('#helpclose').onclick = () => $('#help').classList.add('hidden');
 $('#pausebtn').onclick = () => { syncSettingsUI(); pauseEl.querySelectorAll('details').forEach(d => { d.open = false; }); pauseEl.classList.remove('hidden'); };
 $('#resume').onclick = () => pauseEl.classList.add('hidden');
-$('#restart').onclick = () => { pauseEl.classList.add('hidden'); if (lesson) startLesson(lesson.i); else restart(); };
+$('#restart').onclick = () => { pauseEl.classList.add('hidden'); if (lesson && lesson.L) startMachine(); else if (lesson) startLesson(lesson.i); else restart(); };
 $('#tohome').onclick = () => openHome(lesson ? 'practice' : 'match');
 $('#again').onclick = restart;
 $('#overhome').onclick = () => openHome('match');
@@ -1873,6 +1875,7 @@ function endLesson() {
 }
 function doFeed() {
   if (!lesson) { setupServe(); return; }
+  if (lesson.L) return; // 發球機自己排時間（machineTick）
   const L = LESSONS[lesson.i];
   if (L.serve) { server = 0; setupServe(); return; }
   const F = FEEDS[L.feed];
@@ -1985,12 +1988,140 @@ function buildPracticeLists() {
   });
 }
 const openLessonMenu = () => openHome('practice');
+const curL = () => lesson.L || LESSONS[lesson.i]; // 新手訓練的課，或發球機（lesson.L）
+
+// ---------------- 練習模式・發球機（企劃 §13.3） ----------------
+// 對面的電腦當發球機：照選的球路和落點打過來；你回的球落在對面場內＝成功。
+// 用新手訓練同一套流程（lesson）：教練不追球、只打單打、不算比分；差別是發球機自己排下一球的時間（machineTick）。
+const M_SHOTS = { // 機器站哪（cz）、從多高打（y）、用什麼球；rows＝這種球會落在哪幾排（0 網前、1 中場、2 後場）
+  clear: { t: '高遠', cz: -4.8, y: 2.6, key: 'clear', rows: [2] },
+  smash: { t: '殺球', cz: -4.6, y: 2.7, key: 'smash', rows: [1, 2] },
+  drop:  { t: '吊球', cz: -4.6, y: 2.6, key: 'fastdrop', rows: [0, 1] },
+  net:   { t: '放網', cz: -1.9, y: 0.85, key: 'net', rows: [0] },
+  drive: { t: '平抽', cz: -3.0, y: 1.3, key: 'drive', rows: [1, 2] },
+  lift:  { t: '挑球', cz: -1.9, y: 0.85, key: 'lift', rows: [2] },
+  serve: { t: '接發球', cz: -2.4, y: 1.0, key: 'sserve', rows: [0, 2] },
+};
+const M_ROW_D = [1.3, 3.3, 5.7], M_COL_X = [-1.85, 0, 1.85]; // 每格中心：離網幾公尺；左右（從自己這邊看，右＝正手邊）
+const M_ROW_N = ['網前', '中場', '後場'], M_COL_N = ['左', '中', '右'];
+const M_PRESETS = [
+  { id: 'corners', t: '四角', shots: ['clear', 'net'], cells: [0, 2, 6, 8], iv: 1.5, sp: 1 },
+  { id: 'rear', t: '後場兩角', shots: ['clear'], cells: [6, 8], iv: 1.5, sp: 1 },
+  { id: 'net2', t: '網前兩點', shots: ['net'], cells: [0, 2], iv: 1, sp: 1 },
+  { id: 'defend', t: '接殺防守', shots: ['smash'], cells: [3, 4, 5], iv: 1.5, sp: 1 },
+  { id: 'drive', t: '平抽對抗', shots: ['drive'], cells: [3, 5], iv: 1, sp: 2 },
+  { id: 'random', t: '全場隨機', shots: ['clear', 'smash', 'drop', 'net', 'drive', 'lift'], cells: [], iv: 1.5, sp: 1 },
+];
+if (!settings.mc || !Array.isArray(settings.mc.shots)) settings.mc = { preset: 'corners', shots: ['clear', 'net'], cells: [0, 2, 6, 8], iv: 1.5, sp: 1, n: 20 };
+const MC = () => settings.mc;
+let mach = null; // 進行中的一組：k＝發了幾球、ok／perfect、cells＝每格 {n, ok}、rec＝每球回位秒數
+
+function buildMachineUI() {
+  const c = MC();
+  $('#mpresets').innerHTML = M_PRESETS.map(p => `<button class="chip${c.preset === p.id ? ' on' : ''}" data-p="${p.id}">${p.t}</button>`).join('');
+  $('#mshots').innerHTML = Object.entries(M_SHOTS).map(([k, S]) => `<button class="chip${c.shots.includes(k) ? ' on' : ''}" data-s="${k}">${S.t}</button>`).join('');
+  $('#mcells').innerHTML = [...Array(9)].map((_, i) => `<button class="cell${c.cells.includes(i) ? ' on' : ''}" data-c="${i}" aria-label="${M_ROW_N[Math.floor(i / 3)]}${M_COL_N[i % 3]}"></button>`).join('');
+  document.querySelectorAll('#machine-tab .mseg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(c[seg.dataset.mk]) === b.dataset.v)));
+  $('#mcellnote').textContent = c.cells.length ? `現在選了 ${c.cells.length} 格` : '現在是全場隨機';
+}
+$('#machine-tab').addEventListener('click', e => {
+  const c = MC(), b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.p) { const P = M_PRESETS.find(p => p.id === b.dataset.p); Object.assign(c, { preset: P.id, shots: [...P.shots], cells: [...P.cells], iv: P.iv, sp: P.sp }); }
+  else if (b.dataset.s) { const k = b.dataset.s, i = c.shots.indexOf(k); if (i >= 0) { if (c.shots.length > 1) c.shots.splice(i, 1); } else c.shots.push(k); c.preset = ''; }
+  else if (b.dataset.c !== undefined) { const k = Number(b.dataset.c), i = c.cells.indexOf(k); if (i >= 0) c.cells.splice(i, 1); else c.cells.push(k); c.preset = ''; }
+  else if (b.closest('.mseg')) { c[b.closest('.mseg').dataset.mk] = Number(b.dataset.v); }
+  else return;
+  saveSettings(); buildMachineUI();
+});
+$('#mopen').onclick = () => showTab('machine');
+$('#mback').onclick = () => showTab('practice');
+$('#mstart').onclick = () => { ensureAudio(); startMachine(); };
+$('#mretry').onclick = () => startMachine();
+$('#mhome').onclick = () => { openHome('practice'); showTab('machine'); };
+
+function startMachine() {
+  hideOverlays(); stopDrill();
+  if (settings.demo) { settings.demo = 0; saveSettings(); }
+  const c = JSON.parse(JSON.stringify(MC()));
+  mach = { cfg: c, k: 0, ok: 0, perfect: 0, cells: [...Array(9)].map(() => ({ n: 0, ok: 0 })), rec: [], cell: -1, await: false, nextAt: simT + 1.0, recT0: 0 };
+  const P = M_PRESETS.find(p => p.id === c.preset);
+  lesson = { i: -1, count: 0, L: { t: P ? P.t : '自訂', hint: '把球打回對面場內就算成功（左上「離開」看結果）', slow: false } };
+  applyMode(); // 發球機只打單打
+  $('#score').style.display = 'none'; $('#lessonbar').style.display = 'flex';
+  $('#banner').textContent = ''; $('#ailabel').textContent = ''; $('#lessonmsg').textContent = '';
+  me.pos = { x: 0, z: 3.4 }; me.base = { ...me.pos }; me.plan = null; me.fw = null; me.vel = { x: 0, z: 0 };
+  cpu.fw = null; cpu.plan = null; pending = null;
+  phase = 'feed'; phaseT = 1e9; // 等機器打第一球（人可以走動）
+  machBar(); setHint();
+}
+function machBar() {
+  const n = mach.cfg.n;
+  $('#lessontitle').textContent = `發球機・${lesson.L.t}　成功 ${mach.ok}`;
+  $('#lessoncount').textContent = n ? `${mach.k} / ${n}` : `${mach.k}`;
+}
+function machineFeed() {
+  const c = mach.cfg;
+  if (c.n && mach.k >= c.n) { finishMachine(); return; }
+  const sk = c.shots[Math.floor(Math.random() * c.shots.length)] || 'clear', S = M_SHOTS[sk];
+  // 落點：選的格子裡這種球打得到的；都打不到（例如只選了網前卻選高遠）就用這種球自然的那排、選的那幾欄
+  let cand = c.cells.filter(i => S.rows.includes(Math.floor(i / 3)));
+  if (!cand.length) { const cols = c.cells.length ? [...new Set(c.cells.map(i => i % 3))] : [0, 1, 2]; cand = S.rows.flatMap(r => cols.map(cc => r * 3 + cc)); }
+  const cell = cand[Math.floor(Math.random() * cand.length)], r = Math.floor(cell / 3), col = cell % 3;
+  const key = sk === 'serve' ? (r === 0 ? 'sserve' : 'lserve') : sk === 'drop' ? (r === 0 ? 'slowdrop' : 'fastdrop') : S.key;
+  const spec = SHOTS[key], D = M_ROW_D[r] + rand(-0.3, 0.3), X = M_COL_X[col] + rand(-0.3, 0.3);
+  cpu.pos = { x: sk === 'serve' ? -0.6 : rand(-1.0, 1.0), z: S.cz }; cpu.base = { ...cpu.pos }; cpu.fw = null; cpu.plan = null;
+  shuttle.p = { x: cpu.pos.x - 0.45, y: S.y, z: S.cz + 0.35 };
+  trailHist.length = 0; me.plan = null; pending = null;
+  mach.k++; mach.cell = cell; mach.await = true; mach.recT0 = 0; mach.nextAt = 0; mach.cells[cell].n++;
+  $('#lessonmsg').textContent = '';
+  hit(cpu, key, { tx: X, depthFrac: (D - spec.depth[0]) / Math.max(0.01, spec.depth[1] - spec.depth[0]), quality: 'perfect', power: [0.35, 0.6, 0.9][c.sp] ?? 0.6, errK: 0.3 });
+  machBar();
+}
+function machineHit(o, land) { // 你打到了：看預測落點在不在對面場內
+  if (!mach || !mach.await) return;
+  mach.await = false;
+  const ok = !!land && inBounds(land.x, land.z, cpu.side);
+  if (ok) { mach.ok++; mach.cells[mach.cell].ok++; if (o.quality === 'perfect') mach.perfect++; }
+  $('#lessonmsg').textContent = ok ? (o.quality === 'perfect' ? '✓ 完美' : '✓ 成功') : '✗ 沒進';
+  $('#lessonmsg').style.color = ok ? '#7ee2a8' : '#ffc2b8';
+  mach.recT0 = simT; mach.nextAt = simT + Math.max(0.8, mach.cfg.iv);
+  machBar();
+}
+function machineLanded() { // 球落地：還在等你接的話＝沒接到
+  if (mach && mach.await) {
+    mach.await = false;
+    $('#lessonmsg').textContent = '✗ 沒接到'; $('#lessonmsg').style.color = '#ffc2b8';
+    mach.nextAt = simT + 0.8; machBar();
+  }
+  phase = 'feed'; phaseT = 1e9;
+}
+window.__mach = () => mach; // 測試用
+function machineTick() {
+  if (mach.recT0 && simT - mach.recT0 > 0.25 && Math.hypot(me.pos.x - me.base.x, me.pos.z - me.base.z) < 0.5) { mach.rec.push(simT - mach.recT0); mach.recT0 = 0; } // 回位時間：擊球到回到中間 0.5 m 內
+  if (mach.nextAt && simT >= mach.nextAt) machineFeed();
+}
+function finishMachine() {
+  const m = mach;
+  if (m.await) { m.cells[m.cell].n--; m.k--; m.await = false; } // 中途離開：還沒結果的那球不算
+  m.nextAt = 0;
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+  const rec = m.rec.length ? (m.rec.reduce((x, y) => x + y, 0) / m.rec.length).toFixed(2) + ' 秒' : '—';
+  $('#msub').textContent = `${lesson.L.t}・${m.cfg.shots.map(k => M_SHOTS[k].t).join('、')}・${['慢', '中', '快'][m.cfg.sp]}`;
+  $('#mtiles').innerHTML = [['成功率', pct(m.ok, m.k)], ['完美率', pct(m.perfect, m.k)], ['平均回位', rec], ['球數', `${m.ok} / ${m.k}`]].map(([t, v]) => `<div><span>${t}</span><b>${v}</b></div>`).join('');
+  $('#mheat').innerHTML = m.cells.map((c, i) => {
+    if (!c.n) return `<div style="background:#ffffff26"><small>${M_ROW_N[Math.floor(i / 3)]}${M_COL_N[i % 3]}</small></div>`;
+    const p = c.ok / c.n;
+    return `<div style="background:hsl(${Math.round(p * 130)},62%,48%)">${Math.round(p * 100)}%<small>${c.ok}/${c.n}</small></div>`;
+  }).join('');
+  endLesson(); hideOverlays();
+  $('#mstats').classList.remove('hidden');
+}
 $('#introgo').onclick = () => startLesson(Number($('#intro').dataset.i));
 $('#introback').onclick = openLessonMenu;
 $('#donenext').onclick = () => { const i = lesson.i + 1; endLesson(); openLessonIntro(i); };
 $('#doneretry').onclick = () => { const i = lesson.i; startLesson(i); };
 $('#donemenu').onclick = () => { endLesson(); openLessonMenu(); };
-$('#lessonquit').onclick = () => { endLesson(); openLessonMenu(); };
+$('#lessonquit').onclick = () => { if (lesson && lesson.L) { finishMachine(); return; } endLesson(); openLessonMenu(); };
 
 // ---------------- 動畫 ----------------
 function swingAnim(a) {
@@ -2107,13 +2238,13 @@ function loop(now) {
   const realDt = rdt;
   if (hitStop > 0) { hitStop -= rdt; rdt = 0; }
   if (window.__freeze) rdt = 0; // 測試用：暫停
-  if (!homeEl.classList.contains('hidden') || !pauseEl.classList.contains('hidden')) rdt = 0; // 主選單、暫停中
+  if (!homeEl.classList.contains('hidden') || !pauseEl.classList.contains('hidden') || !$('#mstats').classList.contains('hidden')) rdt = 0; // 主選單、暫停中、看練習結果
   const rr = settings.assist && !settings.demo ? reachInfo() : null;
   // 慢動作輔助：球進到打得到的範圍才慢慢變慢；很快的球（殺球、平抽）不放慢
   const fastBall = Math.hypot(shuttle.v.x, shuttle.v.y, shuttle.v.z) > 14;
   const assistTgt = rr && rr.ok && !fastBall ? 0.5 : 1;
   assistS += (assistTgt - assistS) * Math.min(1, realDt * 7);
-  acc += rdt * (lesson && LESSONS[lesson.i].slow ? 0.6 : settings.slow ? 0.5 : 1) * assistS * (performance.now() < fancySlowUntil ? 0.3 : 1);
+  acc += rdt * (lesson && curL().slow ? 0.6 : settings.slow ? 0.5 : 1) * assistS * (performance.now() < fancySlowUntil ? 0.3 : 1);
   let guard = 0;
   requestAnimationFrame(loop);
   if (window.__recording) { last = now; return; } // 錄連續格時暫停
