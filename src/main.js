@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
-import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1111';
-import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1111';
-import { attachGesture, chargeOf } from './gesture.js?v=1111';
-import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1111';
-import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1111';
-import { buildArena } from './arena.js?v=1111';
-import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1111';
+import { DT, NET_H, COURT, step, simulate } from './physics.js?v=1120';
+import { SHOTS, planShot, predictContact, classify, CURVE_MIN, TOP_Y } from './shots.js?v=1120';
+import { attachGesture, chargeOf } from './gesture.js?v=1120';
+import { loadVRM, Rig, DIVE_LEN } from './character.js?v=1120';
+import { planMove, planRecover, planJumpFollow, bodyAt, yawAt, bobAt } from './footwork.js?v=1120';
+import { buildArena } from './arena.js?v=1120';
+import { HIT_WAVS, SQUEAK_WAVS } from './sfx_data.js?v=1120';
+import { initAccount, touch as acctTouch, signIn, signOut, info as acctInfo } from './account.js?v=1120';
 
 const $ = s => document.querySelector(s);
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -15,7 +16,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // ---------------- 設定 ----------------
 const settings = { target: 11, diff: 1, slow: 0, ring: 1, demo: 0, assist: 1, cam: 0, pers: 0, opp: 0, games: 1, stamina: 0, mode: 1, sound: 1, crowd: 1, call: 1, me: 0, hawk: 1, vol: 3, squeak: 1, vib: 1, oSpd: 0, oRea: 0, oSta: 0, oAcc: 0, oAtk: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bm-proto') || '{}')); } catch (e) {}
-const saveSettings = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
+const saveSettingsLocal = () => { try { localStorage.setItem('bm-proto', JSON.stringify(settings)); } catch (e) {} };
+const saveSettings = () => { saveSettingsLocal(); acctTouch('settings'); }; // 先存手機，登入的話背景上傳雲端
 // 電腦難度：tactic＝多常照戰術出球（其餘隨機）、err＝落點誤差倍數、poor＝勉強擊球的機率
 const DIFF = [
   { speed: 3.4, react: 0.34, perfect: 0.25, poor: 0.35, readOut: 0.5, tactic: 0, err: 1.0, backhand: 0.1 },
@@ -1831,7 +1833,8 @@ const FEEDS = {
 };
 let lesson = null;
 const doneSet = (() => { try { return new Set(JSON.parse(localStorage.getItem('bm-lessons') || '[]')); } catch (e) { return new Set(); } })();
-const saveDone = () => { try { localStorage.setItem('bm-lessons', JSON.stringify([...doneSet])); } catch (e) {} };
+const saveDoneLocal = () => { try { localStorage.setItem('bm-lessons', JSON.stringify([...doneSet])); } catch (e) {} };
+const saveDone = () => { saveDoneLocal(); acctTouch('lessons'); };
 
 function lessonBar() {
   const L = LESSONS[lesson.i];
@@ -2127,6 +2130,45 @@ applySound();
 updateScore();
 setupServe();
 openHome('match');
+
+// ---------------- 帳號與雲端存檔（§13.2） ----------------
+const STATUS_TXT = {
+  guest: '進度存在這支手機・登入後可以換手機接著玩', loading: '連線中…', syncing: '同步中…',
+  synced: '已同步到雲端', pending: '有變更等著上傳，連上後自動傳', offline: '離線中，進度先存在手機，連上後自動上傳',
+  unavailable: '現在連不上登入服務，進度先存在這支手機',
+};
+function renderAccount(I) {
+  const signed = I.signedIn;
+  $('#acctname').textContent = signed ? I.name : '訪客';
+  $('#acctstatus').textContent = STATUS_TXT[I.status] || '';
+  const av = $('#acctavatar');
+  av.style.backgroundImage = signed && I.photo ? `url("${I.photo}")` : '';
+  av.classList.toggle('photo', !!(signed && I.photo));
+  const b = $('#acctbtn');
+  b.textContent = signed ? '登出' : '用 Google 登入';
+  b.disabled = !I.ready && !signed;
+  b.classList.toggle('ghost', signed);
+}
+$('#acctbtn').onclick = async () => {
+  const I = acctInfo();
+  try { if (I.signedIn) await signOut(); else await signIn(); }
+  catch (e) { console.warn(e); $('#acctstatus').textContent = '登入沒有成功，可以再按一次'; }
+};
+initAccount({
+  getLocal: () => ({ settings, lessons: [...doneSet] }),
+  applyRemote: R => { // 另一支手機的進度比較新：套用到這裡（只存手機，不再觸發上傳）
+    if (R.settings) {
+      const prevMe = settings.me, prevOpp = settings.opp, prevMode = settings.mode;
+      Object.assign(settings, R.settings); settings.demo = 0; saveSettingsLocal();
+      diffCache.clear(); syncSettingsUI(); updateScore(); applySound(); setHint();
+      if (settings.me !== prevMe) loadMe();
+      if (settings.opp !== prevOpp) loadOpponent();
+      if (settings.mode !== prevMode && homeEl.classList.contains('hidden')) restart();
+    }
+    if (R.lessons) { for (const i of R.lessons) doneSet.add(i); saveDoneLocal(); buildPracticeLists(); $('#firsttip').style.display = doneSet.size ? 'none' : ''; }
+  },
+  onStatus: renderAccount,
+});
 requestAnimationFrame(loop);
 window.__testThrow = (p, v) => { // 測試用：直接丟一顆電腦打過來的球（玩家照正常流程判斷）
   Object.assign(shuttle, { p: { ...p }, v: { ...v }, held: false, lastHitter: cpu, tumble: false, serve: false, netFault: false });
